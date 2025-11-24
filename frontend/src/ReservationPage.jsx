@@ -632,7 +632,6 @@ export default function ReservationPage({ userRole, user }) {
   // ℹ️ Info despre vehiculul atribuit (nume și nr. înmatriculare)
   const [vehicleInfo, setVehicleInfo] = useState(null);
   const [selectedTrip, setSelectedTrip] = useState(null);
-  const boardingStarted = useMemo(() => Boolean(selectedTrip?.boarding_started), [selectedTrip]);
   const tripDateTime = useMemo(() => {
     if (!selectedTrip?.date || !selectedTrip?.time) return null;
     const [year, month, day] = String(selectedTrip.date).split('-').map(Number);
@@ -642,22 +641,6 @@ export default function ReservationPage({ userRole, user }) {
     if (![year, month, day, hours, minutes].every((value) => Number.isFinite(value))) return null;
     return new Date(year, month - 1, day, hours, minutes, 0, 0);
   }, [selectedTrip?.date, selectedTrip?.time]);
-  const blockNewReservations =
-    !!onlineSettingsLoaded &&
-    !!onlineSettings?.blockPastReservations &&
-    tripDateTime instanceof Date &&
-    tripDateTime.getTime() < Date.now();
-  const blockBannerMessage = useMemo(() => {
-    if (blockNewReservations) {
-      return 'Rezervările noi nu sunt disponibile pentru curse care au plecat deja.';
-    }
-
-    if (boardingStarted) {
-      return 'Îmbarcarea a început pentru această cursă. Nu se mai pot face rezervări noi din aplicația internă.';
-    }
-
-    return null;
-  }, [blockNewReservations, boardingStarted]);
   const [moveSourceSeat, setMoveSourceSeat] = useState(null);
   const [paying, setPaying] = useState(false);
   const lastSelectedSeatIdsRef = useRef([]);
@@ -1002,6 +985,57 @@ export default function ReservationPage({ userRole, user }) {
   const currentDriverName = activeTripVehicleId
     ? driverAssignmentsByTripVehicle.get(activeTripVehicleId) || ''
     : '';
+
+  const activeTripVehicle = useMemo(() => {
+    if (!Array.isArray(tripVehicles) || tripVehicles.length === 0) {
+      return null;
+    }
+
+    if (activeTv === 'main') {
+      return tripVehicles.find((tv) => tv.is_primary) ?? null;
+    }
+
+    const numericId = Number(activeTv);
+    if (!Number.isFinite(numericId)) {
+      return null;
+    }
+
+    return tripVehicles.find((tv) => tv.trip_vehicle_id === numericId) ?? null;
+  }, [activeTv, tripVehicles]);
+
+  const boardingStarted = useMemo(() => {
+    if (activeTripVehicle && activeTripVehicle.boarding_started != null) {
+      return Boolean(activeTripVehicle.boarding_started);
+    }
+
+    const primaryTv = Array.isArray(tripVehicles)
+      ? tripVehicles.find((tv) => tv.is_primary)
+      : null;
+
+    if (primaryTv && primaryTv.boarding_started != null) {
+      return Boolean(primaryTv.boarding_started);
+    }
+
+    return Boolean(selectedTrip?.boarding_started);
+  }, [activeTripVehicle, tripVehicles, selectedTrip]);
+
+  const blockNewReservations =
+    !!onlineSettingsLoaded &&
+    !!onlineSettings?.blockPastReservations &&
+    tripDateTime instanceof Date &&
+    tripDateTime.getTime() < Date.now();
+
+  const blockBannerMessage = useMemo(() => {
+    if (blockNewReservations) {
+      return 'Rezervările noi nu sunt disponibile pentru curse care au plecat deja.';
+    }
+
+    if (boardingStarted) {
+      return 'Îmbarcarea a început pentru această cursă. Nu se mai pot face rezervări noi din aplicația internă.';
+    }
+
+    return null;
+  }, [blockNewReservations, boardingStarted]);
 
   useEffect(() => {
     if (!tripId || !selectedDate || !selectedScheduleId) {
