@@ -17,6 +17,7 @@ import ro.priscom.sofer.ui.components.StatusBar
 import ro.priscom.sofer.ui.models.Route
 import ro.priscom.sofer.ui.data.DriverLocalStore
 import ro.priscom.sofer.ui.data.local.LocalRepository
+import ro.priscom.sofer.ui.data.local.StationEntity
 import ro.priscom.sofer.ui.data.remote.RemoteRepository
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,6 +41,8 @@ fun MainTabsScreen(
 
     // aici ținem textul traseu/ora selectate
     var currentRouteInfo by remember { mutableStateOf(routeInfo) }
+    var currentRouteId by remember { mutableStateOf<Int?>(null) }
+    var currentDirection by remember { mutableStateOf<String?>(null) }
 
     // stare persistentă între taburi: cursă pornită / îmbarcare pornită / selecție auto
     var tripStarted by remember { mutableStateOf(false) }
@@ -51,11 +54,24 @@ fun MainTabsScreen(
     val context = LocalContext.current
 
     val repo = remember { LocalRepository(context) }
+    val remoteRepo = remember { RemoteRepository() }
     var stationsList by remember { mutableStateOf(listOf<String>()) }
 
 
-    LaunchedEffect(Unit) {
-        val stations = repo.getAllStations()
+    LaunchedEffect(currentRouteId, currentDirection) {
+        val stations = currentRouteId?.let { routeId ->
+            // preferăm să lăsăm backend-ul să returneze lista gata ordonată
+            val remote = remoteRepo.getRouteStations(routeId, currentDirection)
+            val remoteStations = remote?.map { dto ->
+                StationEntity(
+                    id = dto.station_id,
+                    name = dto.stationName ?: "Stația ${dto.station_id}"
+                )
+            }
+
+            remoteStations ?: repo.getStationsForRoute(routeId, currentDirection)
+        } ?: repo.getAllStations()
+
         stationsList = stations.map { "${it.id}. ${it.name}" }
     }
 
@@ -105,7 +121,9 @@ fun MainTabsScreen(
                 0 -> AdminTabScreen(
                     loggedIn = loggedIn,
                     tripStarted = tripStarted,
-                    onRouteSelected = { routeName, hour, tripId ->
+                    onRouteSelected = { routeId, routeName, hour, tripId, direction ->
+                        currentRouteId = routeId
+                        currentDirection = direction
                         currentRouteInfo = "Traseu: $routeName, Cursa: $hour"
                         currentTripId = tripId          // salvăm trip-ul curent
                         tripStarted = true              // cursa PORNITĂ
@@ -115,6 +133,8 @@ fun MainTabsScreen(
                         tripStarted = false
                         boardingStarted = false
                         currentTripId = null            // nu mai avem cursă activă
+                        currentRouteId = null
+                        currentDirection = null
                         currentRouteInfo = "Nicio cursă selectată încă"
                     },
                     onOpenSync = onOpenSync,
@@ -145,7 +165,7 @@ fun MainTabsScreen(
 fun AdminTabScreen(
     loggedIn: Boolean,
     tripStarted: Boolean,
-    onRouteSelected: (String, String, Int?) -> Unit,
+    onRouteSelected: (Int, String, String, Int?, String?) -> Unit,
     onEndTrip: () -> Unit,
     onOpenSync: () -> Unit,
     onOpenLogin: () -> Unit
@@ -165,6 +185,9 @@ fun AdminTabScreen(
      var tripIdByRouteAndDisplayTime by remember {
          mutableStateOf<Map<Pair<Int, String>, Int>>(emptyMap())
      }
+    var directionByRouteAndDisplayTime by remember {
+        mutableStateOf<Map<Pair<Int, String>, String>>(emptyMap())
+    }
 
 
      LaunchedEffect(Unit) {
@@ -183,12 +206,16 @@ fun AdminTabScreen(
 
              // mapăm (route_id, display_time) -> trip_id
              val map = mutableMapOf<Pair<Int, String>, Int>()
+             val directionMap = mutableMapOf<Pair<Int, String>, String>()
              mobileRoutes.forEach { mr ->
                  mr.trips.forEach { trip ->
-                     map[mr.route_id to trip.display_time] = trip.trip_id
+                     val key = mr.route_id to trip.display_time
+                     map[key] = trip.trip_id
+                     directionMap[key] = trip.direction
                  }
              }
              tripIdByRouteAndDisplayTime = map
+             directionByRouteAndDisplayTime = directionMap
          } else {
              // 2. fallback – ce aveai deja (DB sau dummy)
              val entities = localRepo.getAllRoutes()
@@ -221,8 +248,9 @@ fun AdminTabScreen(
                  )
              }
 
-             // în fallback nu avem trips reale
-             tripIdByRouteAndDisplayTime = emptyMap()
+            // în fallback nu avem trips reale
+            tripIdByRouteAndDisplayTime = emptyMap()
+            directionByRouteAndDisplayTime = emptyMap()
          }
      }
 
@@ -374,7 +402,7 @@ fun AdminTabScreen(
 
         "selectHour" -> {
             val route = selectedRoute
-            if (route == null) {
+                    if (route == null) {
                 screen = "buttons"
             } else {
                 SelectHourScreen(
@@ -382,7 +410,8 @@ fun AdminTabScreen(
                     onHourClick = { hour ->
                         val key = route.id to hour
                         val tripId = tripIdByRouteAndDisplayTime[key]
-                        onRouteSelected(route.name, hour, tripId)
+                        val direction = directionByRouteAndDisplayTime[key]
+                        onRouteSelected(route.id, route.name, hour, tripId, direction)
                         screen = "buttons"
                     },
                     onCancel = { screen = "buttons" }

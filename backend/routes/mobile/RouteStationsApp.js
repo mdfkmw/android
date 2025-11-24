@@ -6,7 +6,7 @@ const db = require('../../db');
 // fără requireAuth, fără cookie
 router.get('/', async (req, res) => {
   try {
-    const { route_id } = req.query;
+    const { route_id, direction } = req.query;
 
     const params = [];
     let where = '';
@@ -62,6 +62,25 @@ router.get('/', async (req, res) => {
         geofence_polygon,
       };
     });
+
+    // Dacă direcția este RETUR, inversăm ordinea pe fiecare rută
+    // direct pe server, ca să scutim telefonul de procesare suplimentară.
+    if (direction && String(direction).toLowerCase() === 'retur') {
+      const grouped = new Map();
+
+      sanitized.forEach((row) => {
+        const list = grouped.get(row.route_id) || [];
+        list.push(row);
+        grouped.set(row.route_id, list);
+      });
+
+      const reversed = [];
+      grouped.forEach((list) => {
+        reversed.push(...list.reverse());
+      });
+
+      return res.json(reversed);
+    }
 
     res.json(sanitized);
   } catch (err) {

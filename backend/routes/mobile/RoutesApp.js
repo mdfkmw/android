@@ -11,7 +11,14 @@ router.get('/', async (req, res) => {
       ORDER BY COALESCE(order_index, 999999), name
     `);
 
-    res.json(rows);
+    // MariaDB întoarce 0/1 numeric – convertim explicit la boolean pentru
+    // compatibilitate cu app-ul mobil care parsează câmpul ca boolean.
+    const sanitized = rows.map((row) => ({
+      ...row,
+      visible_for_drivers: !!row.visible_for_drivers,
+    }));
+
+    res.json(sanitized);
   } catch (err) {
     console.error("RoutesApp error", err);
     res.status(500).json({ error: "Eroare RoutesApp" });
