@@ -689,12 +689,17 @@ router.post('/', async (req, res) => {
     // 2) trip existent sau îl creăm
     let trip_id;
     const tripRes = await db.query(
-      `SELECT id, boarding_started FROM trips
-        WHERE route_schedule_id = ?
-          AND date = DATE(?)
-          AND TIME(time) = TIME(?)
+      `SELECT
+          t.id,
+          tv.id AS trip_vehicle_id,
+          COALESCE(tv.boarding_started, 0) AS boarding_started
+        FROM trips t
+        LEFT JOIN trip_vehicles tv ON tv.trip_id = t.id AND tv.vehicle_id = ?
+        WHERE t.route_schedule_id = ?
+          AND t.date = DATE(?)
+          AND TIME(t.time) = TIME(?)
         LIMIT 1`,
-      [resolvedScheduleId, date, canonicalTime]
+      [vehicle_id, resolvedScheduleId, date, canonicalTime]
     );
     if (tripRes.rows.length > 0) {
       const existingTrip = tripRes.rows[0];
@@ -1358,11 +1363,17 @@ router.post('/moveToOtherTrip', async (req, res) => {
     const cid = randomUUID();
     // info trip nou + stații
     const tripInfoRes = await db.query(
-      `SELECT t.route_id, rs.direction, t.boarding_started
+      `SELECT
+          t.route_id,
+          rs.direction,
+          s.vehicle_id,
+          COALESCE(tv.boarding_started, 0) AS boarding_started
          FROM trips t
          JOIN route_schedules rs ON rs.id = t.route_schedule_id
+         JOIN seats s ON s.id = ?
+         LEFT JOIN trip_vehicles tv ON tv.trip_id = t.id AND tv.vehicle_id = s.vehicle_id
         WHERE t.id = ?`,
-      [new_trip_id]
+      [new_seat_id, new_trip_id]
     );
     if (!tripInfoRes.rowCount) {
       return res.status(400).json({ error: 'Cursa selectată nu există' });

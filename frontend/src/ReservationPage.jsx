@@ -632,7 +632,7 @@ export default function ReservationPage({ userRole, user }) {
   // ℹ️ Info despre vehiculul atribuit (nume și nr. înmatriculare)
   const [vehicleInfo, setVehicleInfo] = useState(null);
   const [selectedTrip, setSelectedTrip] = useState(null);
-  const boardingStarted = useMemo(() => Number(selectedTrip?.boarding_started) === 1, [selectedTrip]);
+  const boardingStarted = useMemo(() => Boolean(selectedTrip?.boarding_started), [selectedTrip]);
   const tripDateTime = useMemo(() => {
     if (!selectedTrip?.date || !selectedTrip?.time) return null;
     const [year, month, day] = String(selectedTrip.date).split('-').map(Number);
