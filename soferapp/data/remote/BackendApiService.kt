@@ -71,6 +71,7 @@ data class RouteStationDto(
     val route_id: Int,
     val station_id: Int,
     val order_index: Int,
+    @SerializedName("station_name") val stationName: String? = null,
     val geofence_type: String?,        // "circle" / "polygon" / null
     val geofence_radius: Double?,      // pentru circle
     val geofence_polygon: List<List<Double>>? // [[lat, lng], [lat, lng], ...]
@@ -164,7 +165,8 @@ interface BackendApiService {
 
     @GET("/api/mobile/route_stations")
     suspend fun getRouteStationsApp(
-        @Query("route_id") routeId: Int? = null
+        @Query("route_id") routeId: Int? = null,
+        @Query("direction") direction: String? = null
     ): List<RouteStationDto>
 
     @GET("/api/mobile/price_lists")
