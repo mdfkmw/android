@@ -572,7 +572,7 @@ async function loadTripBasics(client, tripId) {
       t.date,
       DATE_FORMAT(t.time, '%H:%i') AS departure_time,
       t.time,
-      t.boarding_started,
+      COALESCE(pv.boarding_started, 0) AS boarding_started,
       rs.direction,
       rs.id AS schedule_id
     FROM trips t

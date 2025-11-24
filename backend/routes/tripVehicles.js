@@ -22,14 +22,18 @@ router.get('/', async (req, res) => {
         v.plate_number,
         v.operator_id,
         tv.is_primary,
+        tv.boarding_started,
         tv.notes
       FROM trip_vehicles tv
       JOIN vehicles v ON v.id = tv.vehicle_id
       WHERE tv.trip_id = ?
       ORDER BY tv.is_primary DESC, v.id
     `;
-    const { rows } = await db.query(sql, [trip_id]);
-    res.json(rows);
+      const { rows } = await db.query(sql, [trip_id]);
+      res.json(rows.map((row) => ({
+        ...row,
+        boarding_started: !!row.boarding_started,
+      })));
   } catch (err) {
     console.error('GET /api/trip-vehicles error:', err);
     res.status(500).json({ error: 'Eroare la încărcarea vehiculelor cursei' });
