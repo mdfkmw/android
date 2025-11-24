@@ -36,7 +36,7 @@ class RemoteSyncRepository {
                     EmployeeEntity(
                         id = it.id,
                         name = it.name,
-                        role = it.role,
+                        role = it.role ?: "",
                         operatorId = it.operator_id ?: 0,
                         password = "" // backend nu trimite parola; o lași goală local
                     )
