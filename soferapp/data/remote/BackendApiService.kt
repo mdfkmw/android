@@ -44,7 +44,7 @@ data class OperatorDto(
 data class EmployeeDto(
     val id: Int,
     val name: String,
-    val role: String,
+    val role: String?,
     val operator_id: Int?
 )
 
