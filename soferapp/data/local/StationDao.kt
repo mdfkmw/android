@@ -11,6 +11,17 @@ interface StationDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(list: List<StationEntity>)
 
-    @Query("SELECT * FROM stations")
+    @Query("SELECT * FROM stations ORDER BY name")
     suspend fun getAll(): List<StationEntity>
+
+    @Query(
+        """
+        SELECT s.*
+        FROM stations s
+        INNER JOIN route_stations rs ON rs.stationId = s.id
+        WHERE rs.routeId = :routeId
+        ORDER BY rs.orderIndex
+        """
+    )
+    suspend fun getForRoute(routeId: Int): List<StationEntity>
 }

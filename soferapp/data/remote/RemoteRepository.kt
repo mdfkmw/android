@@ -32,4 +32,16 @@ class RemoteRepository {
             null
         }
     }
+
+    suspend fun getRouteStations(
+        routeId: Int,
+        direction: String?
+    ): List<RouteStationDto>? {
+        return try {
+            BackendApi.service.getRouteStationsApp(routeId, direction)
+        } catch (e: Exception) {
+            Log.e("RemoteRepository", "getRouteStations error", e)
+            null
+        }
+    }
 }
