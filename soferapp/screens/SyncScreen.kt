@@ -36,16 +36,23 @@ fun SyncScreen(
         scope.launch {
             isRunning = true
             val result = syncRepo.syncMasterData(db, loggedIn)
-            lastMessage =
-                "Sincronizare completă:\n" +
-                        "- operators: ${result.operators}\n" +
-                        "- employees: ${result.employees}\n" +
-                        "- vehicles: ${result.vehicles}\n" +
-                        "- routes: ${result.routes}\n" +
-                        "- stations: ${result.stations}\n" +
-                        "- route_stations: ${result.routeStations}\n" +
-                        "- price_lists: ${result.priceLists}\n" +
-                        "- price_list_items: ${result.priceListItems}"
+            lastMessage = buildString {
+                appendLine("Sincronizare completă:")
+                appendLine("- operators: ${result.operators}")
+                appendLine("- employees: ${result.employees}")
+                appendLine("- vehicles: ${result.vehicles}")
+                appendLine("- routes: ${result.routes}")
+                appendLine("- stations: ${result.stations}")
+                appendLine("- route_stations: ${result.routeStations}")
+                appendLine("- price_lists: ${result.priceLists}")
+                append("- price_list_items: ${result.priceListItems}")
+
+                result.error?.let { errorMessage ->
+                    appendLine()
+                    appendLine()
+                    append("Eroare sincronizare: $errorMessage")
+                }
+            }
             isRunning = false
         }
     }
