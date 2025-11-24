@@ -72,7 +72,7 @@ fun MainTabsScreen(
             remoteStations ?: repo.getStationsForRoute(routeId, currentDirection)
         } ?: repo.getAllStations()
 
-        stationsList = stations.map { "${it.id}. ${it.name}" }
+        stationsList = stations.map { it.name }
     }
 
     Scaffold(
