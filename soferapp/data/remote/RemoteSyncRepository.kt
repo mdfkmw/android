@@ -152,12 +152,13 @@ class RemoteSyncRepository {
                 stations = stationsDto.size,
                 routeStations = routeStationsDto.size,
                 priceLists = priceListsDto.size,
-                priceListItems = priceListItemsDto.size
+                priceListItems = priceListItemsDto.size,
+                error = null
             )
 
         } catch (e: Exception) {
             Log.e("RemoteSyncRepository", "Master sync error", e)
-            MasterSyncResult(0, 0, 0, 0, 0, 0, 0, 0)
+            MasterSyncResult(0, 0, 0, 0, 0, 0, 0, 0, error = e.localizedMessage)
         }
     }
 }
@@ -170,5 +171,6 @@ data class MasterSyncResult(
     val stations: Int,
     val routeStations: Int,
     val priceLists: Int,
-    val priceListItems: Int
+    val priceListItems: Int,
+    val error: String? = null
 )
