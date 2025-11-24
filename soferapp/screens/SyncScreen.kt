@@ -15,6 +15,9 @@ import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.launch
 import ro.priscom.sofer.ui.data.local.AppDatabase
 import ro.priscom.sofer.ui.data.remote.RemoteSyncRepository
+import ro.priscom.sofer.ui.data.SyncStatusStore
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun SyncScreen(
@@ -30,13 +33,20 @@ fun SyncScreen(
     val syncRepo = remember { RemoteSyncRepository() }
 
     var isRunning by remember { mutableStateOf(false) }
-    var lastMessage by remember { mutableStateOf("Nu a fost rulat încă niciun sync.") }
+    var lastMessage by remember {
+        mutableStateOf(SyncStatusStore.lastResultMessage ?: "Nu a fost rulat încă niciun sync.")
+    }
+    var lastSyncAt by remember { mutableStateOf(SyncStatusStore.lastSyncTimestamp) }
+
+    val formatter = remember {
+        DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss")
+    }
 
     fun runSync() {
         scope.launch {
             isRunning = true
             val result = syncRepo.syncMasterData(db, loggedIn)
-            lastMessage = buildString {
+            val message = buildString {
                 appendLine("Sincronizare completă:")
                 appendLine("- operators: ${result.operators}")
                 appendLine("- employees: ${result.employees}")
@@ -53,6 +63,10 @@ fun SyncScreen(
                     append("Eroare sincronizare: $errorMessage")
                 }
             }
+            val finishedAt = LocalDateTime.now()
+            lastMessage = message
+            lastSyncAt = finishedAt
+            SyncStatusStore.update(message, finishedAt)
             isRunning = false
         }
     }
@@ -72,6 +86,14 @@ fun SyncScreen(
 
         Text(
             lastMessage,
+            style = MaterialTheme.typography.bodySmall
+        )
+
+        Spacer(Modifier.height(8.dp))
+
+        Text(
+            text = lastSyncAt?.let { "Ultima sincronizare: ${it.format(formatter)}" }
+                ?: "Ultima sincronizare: —",
             style = MaterialTheme.typography.bodySmall
         )
 
