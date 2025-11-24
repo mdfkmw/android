@@ -19,6 +19,31 @@ function parseBooleanFlag(value) {
   return null;
 }
 
+function normalizeBoardingFlags(rows = []) {
+  return rows.map((row) => ({
+    ...row,
+    boarding_started: !!row.boarding_started,
+  }));
+}
+
+async function resolveTripVehicleId(tripId, { tripVehicleId, vehicleId }) {
+  const params = [tripId];
+  let sql = `SELECT id, vehicle_id FROM trip_vehicles WHERE trip_id = ?`;
+
+  if (tripVehicleId) {
+    sql += ' AND id = ?';
+    params.push(tripVehicleId);
+  } else if (vehicleId) {
+    sql += ' AND vehicle_id = ?';
+    params.push(vehicleId);
+  }
+
+  sql += ' ORDER BY is_primary DESC, id LIMIT 1';
+
+  const { rows } = await db.query(sql, params);
+  return rows.length ? rows[0] : null;
+}
+
 // ================================================================
 // PATCH /api/trips/:trip_id/boarding — admin/op_admin/agent/driver
 // ================================================================
@@ -33,12 +58,21 @@ router.patch(
     }
 
     const rawValue = req.body?.boarding_started;
+    const tripVehicleId = req.body?.trip_vehicle_id
+      ? Number(req.body.trip_vehicle_id)
+      : null;
+    const vehicleId = req.body?.vehicle_id ? Number(req.body.vehicle_id) : null;
     const parsedValue = parseBooleanFlag(rawValue);
     if (parsedValue === null) {
       return res.status(400).json({ error: 'Valoare boarding_started invalidă' });
     }
 
     try {
+      const resolvedTv = await resolveTripVehicleId(tripId, { tripVehicleId, vehicleId });
+      if (!resolvedTv) {
+        return res.status(404).json({ error: 'Vehiculul cursei nu a fost găsit.' });
+      }
+
       if (req.user?.role === 'driver') {
         const driverId = Number(req.user?.id);
         if (!Number.isInteger(driverId) || driverId <= 0) {
@@ -48,12 +82,11 @@ router.patch(
           `
           SELECT 1
             FROM trip_vehicle_employees tve
-            JOIN trip_vehicles tv ON tv.id = tve.trip_vehicle_id
            WHERE tve.employee_id = ?
-             AND tv.trip_id = ?
+             AND tve.trip_vehicle_id = ?
            LIMIT 1
           `,
-          [driverId, tripId]
+          [driverId, resolvedTv.id]
         );
         if (!assignmentRows.length) {
           return res.status(403).json({ error: 'Nu ești asignat pe această cursă.' });
@@ -61,8 +94,8 @@ router.patch(
       }
 
       const result = await db.query(
-        'UPDATE trips SET boarding_started = ? WHERE id = ?',
-        [parsedValue ? 1 : 0, tripId]
+        'UPDATE trip_vehicles SET boarding_started = ? WHERE id = ?',
+        [parsedValue ? 1 : 0, resolvedTv.id]
       );
 
       if (!result.rowCount) {
@@ -72,6 +105,8 @@ router.patch(
       return res.json({
         success: true,
         trip_id: tripId,
+        trip_vehicle_id: resolvedTv.id,
+        vehicle_id: resolvedTv.vehicle_id,
         boarding_started: !!parsedValue,
       });
     } catch (err) {
@@ -117,6 +152,7 @@ router.get('/:trip_id/vehicles', async (req, res) => {
          tv.trip_id,
          tv.vehicle_id,
          tv.is_primary,
+         tv.boarding_started,
          v.name,
          v.plate_number,
          NULL AS seat_map_id            -- <— NU există în DB, dăm null
@@ -158,7 +194,7 @@ router.get('/', async (req, res) => {
         t.time,
         t.route_id,
         pv.vehicle_id,
-        t.boarding_started,
+        COALESCE(pv.boarding_started, 0) AS boarding_started,
         rs.operator_id  AS trip_operator_id,
         r.name          AS route_name,
         v.name          AS vehicle_name,
@@ -174,7 +210,7 @@ router.get('/', async (req, res) => {
       ORDER BY t.time ASC
     `;
     const { rows } = await db.query(query, params);
-    res.json(rows);
+    res.json(normalizeBoardingFlags(rows));
   } catch (err) {
     console.error('Eroare la GET /api/trips:', err);
     res.status(500).json({ error: 'Eroare internă trips' });
@@ -191,7 +227,7 @@ router.get('/summary', async (_req, res) => {
         t.id AS trip_id,
         t.date,
         t.time,
-        t.boarding_started,
+        COALESCE(pv.boarding_started, 0) AS boarding_started,
         r.name AS route_name,
         v.plate_number
       FROM trips t
@@ -201,7 +237,7 @@ router.get('/summary', async (_req, res) => {
       ORDER BY t.date DESC, t.time ASC
     `;
     const { rows } = await db.query(query);
-    res.json(rows);
+    res.json(normalizeBoardingFlags(rows));
   } catch (err) {
     console.error('Eroare la /summary:', err);
     res.status(500).json({ error: 'Eroare la încărcarea tripurilor' });
@@ -275,7 +311,7 @@ router.get('/find', async (req, res) => {
           t.date,
           TIME_FORMAT(t.time, '%H:%i') AS time,
           t.disabled,
-          t.boarding_started
+          COALESCE(pv.boarding_started, 0) AS boarding_started
         FROM trips t
          LEFT JOIN trip_vehicles pv ON pv.trip_id = t.id AND pv.is_primary = 1
         WHERE t.route_schedule_id = ?
@@ -288,7 +324,7 @@ router.get('/find', async (req, res) => {
     console.log('[trips/find] existing trip count =', findRes.length, 'for', { scheduleId, date });
     if (findRes.length) {
       console.log('[trips/find] return existing trip id=', findRes[0]?.id);
-      return res.json(findRes[0]);
+      return res.json(normalizeBoardingFlags(findRes)[0]);
     }
 
     const defaultVehicleId = await resolveDefaultVehicleId(scheduleId, operator_id);
@@ -325,13 +361,13 @@ console.log('[trips/find] ensured trip_vehicles pair:', { trip_id: insertId, veh
           t.date,
           TIME_FORMAT(t.time, '%H:%i') AS time,
           t.disabled,
-          t.boarding_started
+          COALESCE(pv.boarding_started, 0) AS boarding_started
          FROM trips t
          LEFT JOIN trip_vehicles pv ON pv.trip_id = t.id AND pv.is_primary = 1
         WHERE t.id = ?`,
       [insertId]
     );
-    const trip = tripRows[0];
+    const trip = normalizeBoardingFlags(tripRows)[0];
     res.json(trip);
   } catch (err) {
     console.error('Eroare la găsire/creare trip:', err);
