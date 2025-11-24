@@ -67,7 +67,7 @@ const userPrefs = require('./routes/userPrefs');
 const intentsRoutes = require('./routes/intents');
 const chatRoutes = require('./routes/chat');
 const incomingCallsRouter = require('./routes/incomingCalls');
-const mobileDriverRoutes = require('./routes/mobile/driverApp');
+const mobileRoutes = require('./routes/mobile');
 
 // === SERVEȘTE FRONTEND-UL (Vite build) DIN EXPRESS ===
 const path = require('path');
@@ -153,15 +153,7 @@ app.use('/api/trips', require('./routes/trips'));
 
 
 // 🔹 Endpointuri dedicate aplicației de șofer (Android)
-app.use('/api/mobile/operators', require('./routes/mobile/OperatorsApp'));
-app.use('/api/mobile/employees', require('./routes/mobile/EmployeesApp'));
-app.use('/api/mobile/vehicles', require('./routes/mobile/vehiclesApp'));
-app.use('/api/mobile/routes', require('./routes/mobile/routesApp'));
-app.use('/api/mobile/stations', require('./routes/mobile/stationsApp'));
-app.use('/api/mobile/route_stations', require('./routes/mobile/RouteStationsApp'));
-app.use('/api/mobile/price_lists', require('./routes/mobile/PriceListsApp'));
-app.use('/api/mobile/price_list_items', require('./routes/mobile/PriceListItemsApp'));
-app.use('/api/mobile', mobileDriverRoutes);
+app.use('/api/mobile', mobileRoutes);
 
 
 

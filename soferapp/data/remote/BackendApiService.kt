@@ -147,44 +147,31 @@ interface BackendApiService {
 
     // --- RUTE / STAȚII / PREȚURI pentru aplicația de șofer ---
 
-    // Rute vizibile pentru șofer, filtrate pe o dată
+    // Rute vizibile pentru șofer, filtrate pe o anumită zi (autentificat)
     @GET("/api/routes")
     suspend fun getRoutesForDriver(
         @retrofit2.http.Query("date") date: String,
         @retrofit2.http.Query("driver") driver: Int = 1
     ): List<RouteDto>
 
-    // Toate stațiile (dacă ai dat acces driver la /api/stations)
-    @GET("/api/stations")
-    suspend fun getStations(): List<StationDto>
-
-    // Legăturile route_stations (dacă ai creat endpoint-ul nou)
-    @GET("/api/route_stations")
-    suspend fun getRouteStations(): List<RouteStationDto>
-
-    // Liste de preț
-    @GET("/api/price-lists")
-    suspend fun getPriceLists(): List<PriceListDto>
-
-    // Articolele dintr-o listă de preț
-    @GET("/api/price-lists/{id}/items")
-    suspend fun getPriceListItems(
-        @retrofit2.http.Path("id") id: Int
-    ): List<PriceListItemDto>
-
-
-    @GET("/api/routes")
-    suspend fun getRoutes(): List<RouteDto>
-
-    @GET("/api/price_list_items")
-    suspend fun getPriceListItems(): List<PriceListItemDto>
-
     @GET("/api/mobile/routes-with-trips")
     suspend fun getRoutesWithTrips(
         @Query("date") date: String
     ): List<MobileRouteWithTripsDto>
 
+    @GET("/api/mobile/routes")
+    suspend fun getRoutesApp(): List<RouteDto>
 
+    @GET("/api/mobile/route_stations")
+    suspend fun getRouteStationsApp(
+        @Query("route_id") routeId: Int? = null
+    ): List<RouteStationDto>
+
+    @GET("/api/mobile/price_lists")
+    suspend fun getPriceListsApp(): List<PriceListDto>
+
+    @GET("/api/mobile/price_list_items")
+    suspend fun getPriceListItemsApp(): List<PriceListItemDto>
 }
 
 // === Singleton pentru Retrofit + cookie-uri de sesiune ===

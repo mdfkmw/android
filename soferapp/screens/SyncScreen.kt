@@ -19,6 +19,7 @@ import ro.priscom.sofer.ui.data.remote.RemoteSyncRepository
 @Composable
 fun SyncScreen(
     db: AppDatabase,
+    loggedIn: Boolean,
     onBack: () -> Unit = {}
 ) {
 
@@ -34,7 +35,7 @@ fun SyncScreen(
     fun runSync() {
         scope.launch {
             isRunning = true
-            val result = syncRepo.syncMasterData(db)
+            val result = syncRepo.syncMasterData(db, loggedIn)
             lastMessage =
                 "Sincronizare completă:\n" +
                         "- operators: ${result.operators}\n" +
