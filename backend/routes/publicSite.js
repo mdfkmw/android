@@ -572,12 +572,16 @@ async function loadTripBasics(client, tripId) {
       t.date,
       DATE_FORMAT(t.time, '%H:%i') AS departure_time,
       t.time,
-      COALESCE(pv.boarding_started, 0) AS boarding_started,
+      CASE
+        WHEN COUNT(tv.id) > 0 AND SUM(COALESCE(tv.boarding_started, 0)) = COUNT(tv.id) THEN 1
+        ELSE 0
+      END AS boarding_started,
       rs.direction,
       rs.id AS schedule_id
     FROM trips t
     JOIN route_schedules rs ON rs.id = t.route_schedule_id
     LEFT JOIN trip_vehicles pv ON pv.trip_id = t.id AND pv.is_primary = 1
+    LEFT JOIN trip_vehicles tv ON tv.trip_id = t.id
     WHERE t.id = ?
       AND NOT EXISTS (
         SELECT 1
@@ -590,6 +594,7 @@ async function loadTripBasics(client, tripId) {
               OR (se.weekday IS NOT NULL AND se.weekday = DAYOFWEEK(t.date) - 1)
            )
       )
+    GROUP BY t.id, t.route_id, pv.vehicle_id, t.date, t.time, rs.direction, rs.id
     LIMIT 1
     `,
     [tripId]
@@ -673,7 +678,7 @@ async function computeSeatAvailability(client, {
   const { rows: tvRows } = await execQuery(
     client,
     `
-    SELECT v.id, v.name, v.plate_number, tv.is_primary
+    SELECT v.id, v.name, v.plate_number, tv.is_primary, COALESCE(tv.boarding_started, 0) AS boarding_started
       FROM trip_vehicles tv
       JOIN vehicles v ON v.id = tv.vehicle_id
      WHERE tv.trip_id = ?
@@ -688,6 +693,7 @@ async function computeSeatAvailability(client, {
       vehicle_name: row.name,
       plate_number: row.plate_number,
       is_primary: !!row.is_primary,
+      boarding_started: !!row.boarding_started,
     });
   }
 
@@ -741,8 +747,8 @@ async function computeSeatAvailability(client, {
 
     for (const seat of seatRows) {
       const passengers = seatReservations.get(Number(seat.id)) || [];
-      let isAvailable = true;
-      let status = 'free';
+      let isAvailable = !veh.boarding_started;
+      let status = veh.boarding_started ? 'boarding' : 'free';
       const overlaps = [];
 
       const seatId = Number(seat.id);
@@ -752,52 +758,54 @@ async function computeSeatAvailability(client, {
         ? true
         : holdOwnerId !== undefined && holdOwnerId !== normalizedOwner;
 
-      for (const p of passengers) {
-        if (p.status !== 'active') continue;
-        const rBoard = p.board;
-        const rExit = p.exit;
-        if (!Number.isFinite(rBoard) || !Number.isFinite(rExit)) continue;
-        const overlap = Math.max(boardSeq, rBoard) < Math.min(exitSeq, rExit);
-        if (overlap) {
-          isAvailable = false;
-          status = 'partial';
-          overlaps.push({
-            start: Math.max(boardSeq, rBoard),
-            end: Math.min(exitSeq, rExit),
-          });
-          if (rBoard <= boardSeq && rExit >= exitSeq) {
+      if (!veh.boarding_started) {
+        for (const p of passengers) {
+          if (p.status !== 'active') continue;
+          const rBoard = p.board;
+          const rExit = p.exit;
+          if (!Number.isFinite(rBoard) || !Number.isFinite(rExit)) continue;
+          const overlap = Math.max(boardSeq, rBoard) < Math.min(exitSeq, rExit);
+          if (overlap) {
+            isAvailable = false;
+            status = 'partial';
+            overlaps.push({
+              start: Math.max(boardSeq, rBoard),
+              end: Math.min(exitSeq, rExit),
+            });
+            if (rBoard <= boardSeq && rExit >= exitSeq) {
+              status = 'full';
+              break;
+            }
+          }
+        }
+
+        if (!isAvailable && status === 'partial' && overlaps.length) {
+          overlaps.sort((a, b) => (a.start - b.start) || (b.end - a.end));
+          let coverage = boardSeq;
+          let hasGap = false;
+          for (const seg of overlaps) {
+            if (seg.start > coverage) {
+              hasGap = true;
+              break;
+            }
+            coverage = Math.max(coverage, seg.end);
+            if (coverage >= exitSeq) break;
+          }
+          if (!hasGap && coverage >= exitSeq) {
             status = 'full';
-            break;
           }
         }
-      }
 
-      if (!isAvailable && status === 'partial' && overlaps.length) {
-        overlaps.sort((a, b) => (a.start - b.start) || (b.end - a.end));
-        let coverage = boardSeq;
-        let hasGap = false;
-        for (const seg of overlaps) {
-          if (seg.start > coverage) {
-            hasGap = true;
-            break;
-          }
-          coverage = Math.max(coverage, seg.end);
-          if (coverage >= exitSeq) break;
+        if (heldByOther) {
+          isAvailable = false;
+          if (status === 'free') status = 'partial';
         }
-        if (!hasGap && coverage >= exitSeq) {
-          status = 'full';
-        }
-      }
-
-      if (heldByOther) {
-        isAvailable = false;
-        if (status === 'free') status = 'partial';
       }
 
       const blockedOnline = vehicleBlockedSeats.has(Number(seat.id));
       if (blockedOnline) {
         isAvailable = false;
-        status = 'blocked';
+        status = veh.boarding_started ? 'boarding' : 'blocked';
       }
 
       const selectable = isAvailable && !heldByOther && !blockedOnline;
@@ -1258,6 +1266,7 @@ router.get('/trips/:tripId/seats', async (req, res) => {
           vehicle_name: veh.vehicle_name,
           plate_number: veh.plate_number,
           is_primary: !!veh.is_primary,
+          boarding_started: !!veh.boarding_started,
           seats: (veh.seats || []).map((seat) => ({
             id: seat.id,
             label: seat.label,
@@ -1734,13 +1743,16 @@ router.post('/reservations', async (req, res) => {
     }
 
     const vehicleIds = new Set();
+    const vehicleBoarding = new Map();
     const { rows: otherVeh } = await execQuery(
       conn,
-      `SELECT vehicle_id FROM trip_vehicles WHERE trip_id = ?`,
+      `SELECT vehicle_id, COALESCE(boarding_started, 0) AS boarding_started FROM trip_vehicles WHERE trip_id = ?`,
       [tripId]
     );
     for (const row of otherVeh) {
-      vehicleIds.add(Number(row.vehicle_id));
+      const vehId = Number(row.vehicle_id);
+      vehicleIds.add(vehId);
+      vehicleBoarding.set(vehId, !!row.boarding_started);
     }
 
     if (vehicleIds.size === 0) {
@@ -1785,6 +1797,11 @@ router.post('/reservations', async (req, res) => {
         await conn.rollback();
         conn.release();
         return res.status(400).json({ error: 'Locul selectat nu aparține acestei curse.' });
+      }
+      if (vehicleBoarding.get(Number(seat.vehicle_id))) {
+        await conn.rollback();
+        conn.release();
+        return res.status(409).json({ error: 'Îmbarcarea a început pentru unul dintre vehicule. Rezervările noi nu mai sunt disponibile pe acesta.' });
       }
       const allowedTypes = new Set(['normal', 'foldable', 'wheelchair']);
       if (!allowedTypes.has(seat.seat_type)) {
