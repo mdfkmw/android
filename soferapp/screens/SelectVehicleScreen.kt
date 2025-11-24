@@ -24,7 +24,8 @@ import ro.priscom.sofer.ui.models.Vehicle
 
 @Composable
 fun SelectVehicleScreen(
-    onVehicleSelected: (Vehicle) -> Unit
+    onVehicleSelected: (Vehicle) -> Unit,
+    onBack: () -> Unit
 ) {
     val context = LocalContext.current
     val repo = remember { LocalRepository(context) }
@@ -57,6 +58,12 @@ fun SelectVehicleScreen(
                 text = "Alege mașina",
                 style = MaterialTheme.typography.titleMedium
             )
+
+            Spacer(Modifier.height(8.dp))
+
+            Button(onClick = onBack) {
+                Text("Înapoi")
+            }
 
             Spacer(Modifier.height(16.dp))
 

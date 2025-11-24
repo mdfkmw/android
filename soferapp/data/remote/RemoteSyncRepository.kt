@@ -14,13 +14,13 @@ import java.time.LocalDate
 
 class RemoteSyncRepository {
 
-    suspend fun syncMasterData(db: AppDatabase): MasterSyncResult {
+    suspend fun syncMasterData(db: AppDatabase, loggedIn: Boolean): MasterSyncResult {
         return try {
             // === 1. MASTER DATA EXISTENTE (operators / employees / vehicles) ===
 
-            val operators = BackendApi.service.getOperators()
-            val employees = BackendApi.service.getEmployees()
-            val vehicles = BackendApi.service.getVehicles()
+            val operators = BackendApi.service.getOperatorsApp()
+            val employees = BackendApi.service.getEmployeesApp()
+            val vehicles = BackendApi.service.getVehiclesApp()
 
             db.operatorDao().insertAll(
                 operators.map {
@@ -58,14 +58,17 @@ class RemoteSyncRepository {
 
             val today = LocalDate.now().toString()
 
-            // rute vizibile pentru șofer
-            val routesDto = BackendApi.service.getRoutesForDriver(date = today)
+            val routesDto = if (loggedIn) {
+                BackendApi.service.getRoutesForDriver(date = today)
+            } else {
+                BackendApi.service.getRoutesApp()
+            }
 
             // toate stațiile
-            val stationsDto = BackendApi.service.getStations()
+            val stationsDto = BackendApi.service.getStationsApp()
 
             // toate legăturile rută–stație
-            val routeStationsDto = BackendApi.service.getRouteStations()
+            val routeStationsDto = BackendApi.service.getRouteStationsApp(null)
 
             db.routeDao().insertAll(
                 routesDto.map {
@@ -111,7 +114,7 @@ class RemoteSyncRepository {
 
             // === 3. LISTE DE PREȚ ȘI ITEM-URI ===
 
-            val priceListsDto = BackendApi.service.getPriceLists()
+            val priceListsDto = BackendApi.service.getPriceListsApp()
 
             db.priceListDao().insertAll(
                 priceListsDto.map {
@@ -124,11 +127,10 @@ class RemoteSyncRepository {
                 }
             )
 
-            val allItems = mutableListOf<PriceListItemEntity>()
+            val priceListItemsDto = BackendApi.service.getPriceListItemsApp()
 
-            for (pl in priceListsDto) {
-                val items = BackendApi.service.getPriceListItems(pl.id)
-                allItems += items.map { item ->
+            db.priceListItemDao().insertAll(
+                priceListItemsDto.map { item ->
                     PriceListItemEntity(
                         id = item.id,
                         price = item.price,
@@ -138,9 +140,7 @@ class RemoteSyncRepository {
                         toStationId = item.to_station_id
                     )
                 }
-            }
-
-            db.priceListItemDao().insertAll(allItems)
+            )
 
             // === 4. REZULTAT ===
 
@@ -152,7 +152,7 @@ class RemoteSyncRepository {
                 stations = stationsDto.size,
                 routeStations = routeStationsDto.size,
                 priceLists = priceListsDto.size,
-                priceListItems = allItems.size
+                priceListItems = priceListItemsDto.size
             )
 
         } catch (e: Exception) {
@@ -160,66 +160,6 @@ class RemoteSyncRepository {
             MasterSyncResult(0, 0, 0, 0, 0, 0, 0, 0)
         }
     }
-    // --- Sync inițial pentru aplicația de șofer (fără login, prin /api/mobile/*) ---
-    suspend fun syncAppInitialData(db: AppDatabase) {
-        try {
-            // === 1. Operators / Employees / Vehicles / Stations (pentru aplicația de șofer) ===
-            val operators = BackendApi.service.getOperatorsApp()
-            val employees = BackendApi.service.getEmployeesApp()
-            val vehicles = BackendApi.service.getVehiclesApp()
-            val stations = BackendApi.service.getStationsApp()
-
-            db.operatorDao().insertAll(
-                operators.map { dto ->
-                    OperatorEntity(
-                        id = dto.id,
-                        name = dto.name
-                    )
-                }
-            )
-
-            db.employeeDao().insertAll(
-                employees.map { dto ->
-                    EmployeeEntity(
-                        id = dto.id,
-                        name = dto.name,
-                        role = dto.role,
-                        operatorId = dto.operator_id ?: 0,
-                        password = ""       // necesar din cauza entității tale
-                    )
-                }
-            )
-
-            db.vehicleDao().insertAll(
-                vehicles.map { dto ->
-                    VehicleEntity(
-                        id = dto.id,
-                        plateNumber = dto.plateNumber,
-                        operatorId = dto.operatorId
-                    )
-                }
-            )
-
-            db.stationDao().insertAll(
-                stations.map { dto ->
-                    StationEntity(
-                        id = dto.id,
-                        name = dto.name
-                    )
-                }
-            )
-
-            Log.d(
-                "RemoteSyncRepository",
-                "syncAppInitialData OK: operators=${operators.size}, employees=${employees.size}, vehicles=${vehicles.size}, stations=${stations.size}"
-            )
-        } catch (e: Exception) {
-            Log.e("RemoteSyncRepository", "syncAppInitialData error", e)
-        }
-    }
-
-
-
 }
 
 data class MasterSyncResult(

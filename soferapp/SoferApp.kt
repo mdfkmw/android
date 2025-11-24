@@ -27,19 +27,14 @@ fun SoferApp(db: AppDatabase) {
 
     // sincronizare inițială la deschiderea aplicației (fără login, /api/mobile/*)
     LaunchedEffect(Unit) {
-        remoteSyncRepo.syncAppInitialData(db)
+        remoteSyncRepo.syncMasterData(db, loggedIn = false)
     }
 
-    // auto-sync simplu după login (doar master data cu endpointurile securizate)
+    // auto-sync după login (folosește și endpointurile securizate)
     LaunchedEffect(driverId) {
         if (driverId != null) {
-            remoteSyncRepo.syncMasterData(db)
+            remoteSyncRepo.syncMasterData(db, loggedIn = true)
         }
-    }
-
-    // 1) La PORNIREA aplicației – sincronizăm master-data
-    LaunchedEffect(Unit) {
-        remoteSyncRepo.syncMasterData(db)
     }
 
     // 2) Ecranul principal / navigația de sus
@@ -47,16 +42,20 @@ fun SoferApp(db: AppDatabase) {
         // ecran de sincronizare
         showSyncScreen -> SyncScreen(
             db = db,
+            loggedIn = driverId != null,
             onBack = { showSyncScreen = false }
         )
 
         // după login → alegerea mașinii
-        showSelectVehicleScreen -> SelectVehicleScreen { vehicle ->
-            selectedVehicle = vehicle
-            sessionConfirmed = false
-            showSelectVehicleScreen = false
-            showConfirmDialog = true       // deschidem dialogul de confirmare șofer + mașină
-        }
+        showSelectVehicleScreen -> SelectVehicleScreen(
+            onVehicleSelected = { vehicle ->
+                selectedVehicle = vehicle
+                sessionConfirmed = false
+                showSelectVehicleScreen = false
+                showConfirmDialog = true       // deschidem dialogul de confirmare șofer + mașină
+            },
+            onBack = { showSelectVehicleScreen = false }
+        )
 
         // ecranul principal cu tab-uri (Administrare + Operații)
         else -> {
