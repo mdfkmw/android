@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
-const { writeAudit } = require('../utils/auditLogger');
+const { writeAudit } = require('./audit');
 
 // ✅ Toți utilizatorii autentificați pot CITI; scrierea rămâne restricționată
 router.use(requireAuth);
