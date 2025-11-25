@@ -183,6 +183,7 @@ export default function ReservationPage({ userRole, user }) {
         extension: payload.extension != null ? String(payload.extension) : null,
         source: payload.source != null ? String(payload.source) : null,
         received_at: payload.received_at || new Date().toISOString(),
+        meta: payload.meta || {},
       });
     };
 
@@ -242,18 +243,49 @@ export default function ReservationPage({ userRole, user }) {
     };
   }, []);
 
+  const incomingCallerName = useMemo(() => {
+    const rawName = incomingCall?.meta?.callerName || '';
+    if (typeof rawName !== 'string') return '';
+    return rawName.trim();
+  }, [incomingCall]);
+
+  const incomingCallSegment = useMemo(() => {
+    const segment = incomingCall?.meta?.lastSegment;
+    if (segment?.board && segment?.exit) {
+      return { board: segment.board, exit: segment.exit };
+    }
+    return null;
+  }, [incomingCall]);
+
+  const incomingCallNoShowCount = useMemo(() => {
+    const raw = incomingCall?.meta?.noShowCount ?? incomingCall?.meta?.no_shows_count;
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : 0;
+  }, [incomingCall]);
+
   useEffect(() => {
     if (!incomingCall) return;
     const digits = String(incomingCall.digits || incomingCall.phone || '').replace(/\D/g, '');
     const targetValue = incomingCall.phone || digits;
     if (!targetValue) return;
+    const parts = [];
+    if (incomingCallerName) {
+      parts.push(`Ultimul apel: "${incomingCallerName}" - ${targetValue}.`);
+    } else {
+      parts.push(`Ultimul apel: ${targetValue}.`);
+    }
+    if (incomingCallSegment) {
+      parts.push(`Ultimul segment rezervat a fost: ${incomingCallSegment.board} - ${incomingCallSegment.exit}.`);
+    }
+    if (incomingCallNoShowCount > 0) {
+      parts.push(`Atenție, are ${incomingCallNoShowCount} neprezentări!`);
+    }
+    parts.push('Deschide formularul pasagerului și apasă iconița 📞 din câmpul „Telefon” ca să îl copiezi.');
     setToastType('info');
-    setToastMessage(
-      `Ultimul apel: ${targetValue}. Deschide formularul pasagerului și apasă iconița 📞 din câmpul „Telefon” ca să îl copiezi.`
-    );
+    setToastMessage(parts.join(' '));
     const timeout = setTimeout(() => setToastMessage(''), 2500);
     return () => clearTimeout(timeout);
-  }, [incomingCall, setToastMessage, setToastType]);
+  }, [incomingCall, incomingCallerName, incomingCallNoShowCount, incomingCallSegment, setToastMessage, setToastType]);
 
   const handleApplyIncomingCallToSeat = useCallback((seatId) => {
     if (!incomingCall) return false;
@@ -598,6 +630,7 @@ export default function ReservationPage({ userRole, user }) {
   const autoSelectEnabled = false;
   // 🧭 Toate locurile disponibile pentru vehiculul curent
   const [seats, setSeats] = useState([]);
+  const initialPassengerNamesRef = useRef(new Map());
   const isGridViewActive = seatViewMode === 'grid';
   const exportButtonsDisabled = !isGridViewActive || seats.length === 0 || isExportingSeatMap;
   // 🛣️ Lista rutelor disponibile din baza de date
@@ -643,6 +676,19 @@ export default function ReservationPage({ userRole, user }) {
     if (![year, month, day, hours, minutes].every((value) => Number.isFinite(value))) return null;
     return new Date(year, month - 1, day, hours, minutes, 0, 0);
   }, [selectedTrip?.date, selectedTrip?.time]);
+  // memorizează numele inițiale ale pasagerilor existenți (pentru audit)
+  useEffect(() => {
+    if (!Array.isArray(seats)) return;
+    const map = initialPassengerNamesRef.current;
+    seats.forEach(seat => {
+      if (!Array.isArray(seat?.passengers)) return;
+      seat.passengers.forEach((p) => {
+        if (p?.reservation_id && p?.name && !map.has(p.reservation_id)) {
+          map.set(p.reservation_id, String(p.name));
+        }
+      });
+    });
+  }, [seats]);
   const [moveSourceSeat, setMoveSourceSeat] = useState(null);
   const [paying, setPaying] = useState(false);
   const lastSelectedSeatIdsRef = useRef([]);
@@ -2949,6 +2995,20 @@ export default function ReservationPage({ userRole, user }) {
     [setToastMessage, setToastType, user?.id]
   );
 
+  const logPassengerNameChanges = useCallback(async (changes) => {
+    if (!Array.isArray(changes) || changes.length === 0) return;
+    try {
+      await fetch('/api/audit-logs/passenger-name-change', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ changes }),
+      });
+    } catch (err) {
+      console.warn('[audit] nu am putut înregistra schimbarea de nume', err);
+    }
+  }, []);
+
   // 💾 Trimite rezervarea către backend și afișează notificare + reîncarcă locurile
   const submitReservation = async () => {
     setIsSaving(true);
@@ -3013,6 +3073,7 @@ export default function ReservationPage({ userRole, user }) {
         selectedPriceListId || (passengersData[selectedSeats[0]?.id]?.price_list_id ?? null);
 
       let passengersPayload;
+      const nameChanges = [];
       try {
         passengersPayload = selectedSeats.map((seat) => {
           const d = passengersData[seat.id];
@@ -3045,6 +3106,19 @@ export default function ReservationPage({ userRole, user }) {
               throw new Error('Nu am putut încărca versiunea rezervării. Reîncarcă pagina și încearcă din nou.');
             }
             passengerPayload.version = version;
+          }
+
+          if (passengerPayload.reservation_id) {
+            const oldName = initialPassengerNamesRef.current.get(passengerPayload.reservation_id);
+            const newName = String(passengerPayload.name || '').trim();
+            if (oldName && newName && oldName.trim() !== newName) {
+              nameChanges.push({
+                reservation_id: passengerPayload.reservation_id,
+                person_id: passengerPayload.person_id || null,
+                old_name: oldName,
+                new_name: newName,
+              });
+            }
           }
 
           return passengerPayload;
@@ -3100,6 +3174,15 @@ export default function ReservationPage({ userRole, user }) {
 
       if (!response.ok) {
         throw new Error(data.error || 'Eroare la salvare');
+      }
+
+      if (nameChanges.length) {
+        await logPassengerNameChanges(nameChanges);
+        nameChanges.forEach((c) => {
+          if (c.reservation_id) {
+            initialPassengerNamesRef.current.set(c.reservation_id, c.new_name);
+          }
+        });
       }
 
       const isIdempotentHit = data?.idempotent === true;
@@ -4509,9 +4592,12 @@ export default function ReservationPage({ userRole, user }) {
                 )}
 
                 {incomingCall && (
-                  <div className="p-2 border border-blue-200 bg-blue-50 text-sm text-blue-800 rounded">
+                  <div className="p-2 border border-blue-200 bg-blue-50 text-sm text-blue-800 rounded space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-semibold">📞 Ultimul apel:</span>
+                      {incomingCallerName && (
+                        <span className="italic">„{incomingCallerName}”</span>
+                      )}
                       <span className="font-mono text-base">{incomingCall.phone}</span>
                       {incomingCall.extension && (
                         <span className="text-xs text-blue-700">int: {incomingCall.extension}</span>
@@ -4520,6 +4606,23 @@ export default function ReservationPage({ userRole, user }) {
                         <span className="text-xs text-blue-600">ora {incomingCallTime}</span>
                       )}
                     </div>
+                    {(incomingCallSegment || incomingCallNoShowCount > 0) && (
+                      <div className="space-y-0.5">
+                        {incomingCallSegment && (
+                          <div>
+                            Ultimul segment rezervat a fost:{' '}
+                            <span className="font-semibold">
+                              {incomingCallSegment.board} - {incomingCallSegment.exit}
+                            </span>
+                          </div>
+                        )}
+                        {incomingCallNoShowCount > 0 && (
+                          <div className="text-red-700 font-semibold">
+                            Atenție, are {incomingCallNoShowCount} neprezentări!
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
 

@@ -45,6 +45,83 @@ function sanitizePhone(rawValue) {
   return { display, digits };
 }
 
+async function countNoShows(personId) {
+  if (!personId) return 0;
+  try {
+    const res = await db.query('SELECT COUNT(*) AS cnt FROM no_shows WHERE person_id = ?', [personId]);
+    return Number(res.rows?.[0]?.cnt || 0);
+  } catch (err) {
+    console.error('[incoming-calls] Nu am putut citi neprezentările:', err);
+    return 0;
+  }
+}
+
+async function getLastSegment(personId) {
+  if (!personId) return null;
+  try {
+    const res = await db.query(
+      `SELECT
+         bs.name AS board_name,
+         es.name AS exit_name
+       FROM reservations r
+       LEFT JOIN stations bs ON bs.id = r.board_station_id
+       LEFT JOIN stations es ON es.id = r.exit_station_id
+       WHERE r.person_id = ?
+       ORDER BY r.id DESC
+       LIMIT 1`,
+      [personId],
+    );
+    const row = res.rows?.[0];
+    if (!row) return null;
+    if (!row.board_name || !row.exit_name) return null;
+    return { board: row.board_name, exit: row.exit_name };
+  } catch (err) {
+    console.error('[incoming-calls] Nu am putut citi ultimul segment rezervat:', err);
+    return null;
+  }
+}
+
+async function enrichCall(call) {
+  if (!call) return call;
+  const digits = (call.digits || call.phone || '').replace(/\D/g, '');
+  let callerName = call.meta?.callerName || call.caller_name || null;
+  let personId = call.meta?.personId ?? call.person_id ?? null;
+
+  try {
+    if (!personId && digits) {
+      const personRes = await db.query('SELECT id, name FROM people WHERE phone = ? LIMIT 1', [digits]);
+      if (personRes.rows?.length) {
+        personId = personRes.rows[0].id;
+        callerName = callerName || personRes.rows[0].name || null;
+      }
+    }
+
+    if (personId && !callerName) {
+      const personRes = await db.query('SELECT name FROM people WHERE id = ? LIMIT 1', [personId]);
+      callerName = personRes.rows?.[0]?.name || callerName || null;
+    }
+
+    const [noShowCount, lastSegment] = await Promise.all([
+      countNoShows(personId),
+      getLastSegment(personId),
+    ]);
+
+    return {
+      ...call,
+      meta: {
+        ...(call.meta || {}),
+        callerName,
+        personId,
+        lastSegment,
+        noShowCount,
+      },
+    };
+  } catch (err) {
+    console.error('[incoming-calls] Eroare la îmbogățirea apelului:', err);
+    return call;
+  }
+}
+
 function broadcast(event) {
   const payload = `id: ${event.id}\nevent: call\ndata: ${JSON.stringify(event)}\n\n`;
   for (const listener of Array.from(listeners)) {
@@ -105,7 +182,8 @@ async function ensureHistoryLoaded() {
         },
       };
 
-      storeInHistory(normalized);
+      const enriched = await enrichCall(normalized);
+      storeInHistory(enriched);
       const numericId = Number(row.id);
       if (Number.isFinite(numericId)) {
         sequence = Math.max(sequence, numericId);
@@ -192,9 +270,11 @@ router.post('/', async (req, res) => {
     },
   };
 
-  storeInHistory(entry);
-  lastCall = entry;
-  broadcast(entry);
+  const enriched = await enrichCall(entry);
+
+  storeInHistory(enriched);
+  lastCall = enriched;
+  broadcast(enriched);
 
   return res.json({ success: true });
 });
@@ -244,6 +324,10 @@ router.get('/last', async (req, res) => {
     return res.status(401).json({ error: 'auth required' });
   }
   await ensureHistoryLoaded();
+  const enriched = await enrichCall(lastCall);
+  if (enriched) {
+    lastCall = enriched;
+  }
   res.json({ call: lastCall });
 });
 
