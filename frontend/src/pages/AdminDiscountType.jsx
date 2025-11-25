@@ -22,6 +22,13 @@ const AdminDiscountType = () => {
   const [showApplyModal, setShowApplyModal] = useState(false);
   const [applyDiscountId, setApplyDiscountId] = useState(null);
 
+  const [pricingCategories, setPricingCategories] = useState([]);
+  const [categorySchedules, setCategorySchedules] = useState([]);
+  const [selectedCategoryId, setSelectedCategoryId] = useState('');
+  const [categoryChecked, setCategoryChecked] = useState(new Set());
+  const [categorySortConfig, setCategorySortConfig] = useState({ key: 'route_name', direction: 'asc' });
+  const [categoryRouteFilter, setCategoryRouteFilter] = useState('');
+
   // sorting state
   const [sortConfig, setSortConfig] = useState({ key: 'id', direction: 'asc' });
 
@@ -33,6 +40,29 @@ const AdminDiscountType = () => {
   useEffect(() => {
     fetchDiscounts();
   }, []);
+
+  useEffect(() => {
+    axios
+      .get('/api/pricing-categories')
+      .then((r) => setPricingCategories(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setPricingCategories([]));
+
+    axios
+      .get('/api/discount-types/schedules/all')
+      .then((r) => setCategorySchedules(Array.isArray(r.data) ? r.data : []))
+      .catch(() => setCategorySchedules([]));
+  }, []);
+
+  useEffect(() => {
+    if (!selectedCategoryId) {
+      setCategoryChecked(new Set());
+      return;
+    }
+    axios
+      .get(`/api/pricing-categories/${selectedCategoryId}/schedules`)
+      .then((r) => setCategoryChecked(new Set(r.data)))
+      .catch(() => setCategoryChecked(new Set()));
+  }, [selectedCategoryId]);
 
   const handleSave = async () => {
     if (!newDiscount.code || !newDiscount.label || !newDiscount.value_off) return;
@@ -114,6 +144,61 @@ const AdminDiscountType = () => {
     });
     return sortable;
   }, [discounts, sortConfig]);
+
+  const requestCategorySort = (key) => {
+    let direction = 'asc';
+    if (categorySortConfig.key === key && categorySortConfig.direction === 'asc') {
+      direction = 'desc';
+    }
+    setCategorySortConfig({ key, direction });
+  };
+
+  const sortedCategorySchedules = useMemo(() => {
+    const sortable = [...categorySchedules];
+    sortable.sort((a, b) => {
+      let aVal = a[categorySortConfig.key];
+      let bVal = b[categorySortConfig.key];
+      if (typeof aVal === 'string') aVal = aVal.toLowerCase();
+      if (typeof bVal === 'string') bVal = bVal.toLowerCase();
+      if (aVal < bVal) return categorySortConfig.direction === 'asc' ? -1 : 1;
+      if (aVal > bVal) return categorySortConfig.direction === 'asc' ? 1 : -1;
+      return 0;
+    });
+    return sortable;
+  }, [categorySchedules, categorySortConfig]);
+
+  const availableCategoryRoutes = useMemo(() => {
+    const map = new Map();
+    categorySchedules.forEach((s) => {
+      if (!map.has(s.route_id)) {
+        map.set(s.route_id, s.route_name);
+      }
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [categorySchedules]);
+
+  const filteredCategorySchedules = useMemo(() => {
+    if (!categoryRouteFilter) return sortedCategorySchedules;
+    return sortedCategorySchedules.filter((s) => String(s.route_id) === String(categoryRouteFilter));
+  }, [sortedCategorySchedules, categoryRouteFilter]);
+
+  const toggleCategorySchedule = (id) => {
+    setCategoryChecked((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const savePricingCategories = () => {
+    if (!selectedCategoryId) return;
+    axios
+      .put(`/api/pricing-categories/${selectedCategoryId}/schedules`, {
+        scheduleIds: Array.from(categoryChecked),
+      })
+      .then(() => alert('Salvat!'))
+      .catch(() => alert('Eroare la salvare'));
+  };
 
   return (
     <div className="space-y-10">
@@ -313,6 +398,95 @@ const AdminDiscountType = () => {
         </div>
       )}
       </div>
+
+      <section className="space-y-4">
+        <h3 className="text-lg font-semibold">Categorii de preț afișate agenților</h3>
+
+        <div className="flex items-center gap-3 flex-wrap">
+          <label className="text-sm font-medium">Selectează categorie:</label>
+          <select
+            className="p-2 text-sm border rounded"
+            value={selectedCategoryId}
+            onChange={(e) => setSelectedCategoryId(e.target.value)}
+          >
+            <option value="">Alege categorie…</option>
+            {pricingCategories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+
+          <label className="text-sm font-medium">Filtrează traseul:</label>
+          <select
+            className="p-2 text-sm border rounded"
+            value={categoryRouteFilter}
+            onChange={(e) => setCategoryRouteFilter(e.target.value)}
+          >
+            <option value="">Toate traseele</option>
+            {availableCategoryRoutes.map((route) => (
+              <option key={route.id} value={route.id}>
+                {route.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-auto text-sm table-auto border-collapse">
+            <thead>
+              <tr>
+                <th
+                  onClick={() => requestCategorySort('route_name')}
+                  className="p-1 border text-left cursor-pointer select-none bg-gray-200"
+                >
+                  Traseu {categorySortConfig.key === 'route_name' ? (categorySortConfig.direction === 'asc' ? '▲' : '▼') : ''}
+                </th>
+                <th
+                  onClick={() => requestCategorySort('departure')}
+                  className="p-1 border text-left cursor-pointer select-none bg-gray-200"
+                >
+                  Ora {categorySortConfig.key === 'departure' ? (categorySortConfig.direction === 'asc' ? '▲' : '▼') : ''}
+                </th>
+                <th
+                  onClick={() => requestCategorySort('direction')}
+                  className="p-1 border text-left cursor-pointer select-none bg-gray-200"
+                >
+                  Direcție {categorySortConfig.key === 'direction' ? (categorySortConfig.direction === 'asc' ? '▲' : '▼') : ''}
+                </th>
+                <th className="p-1 border text-left bg-gray-200">Disponibil</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredCategorySchedules.map((s, idx) => (
+                <tr key={s.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                  <td className="p-1 border">{s.route_name}</td>
+                  <td className="p-1 border">{s.departure}</td>
+                  <td className="p-1 border">{s.direction}</td>
+                  <td className="p-1 border text-center">
+                    <input
+                      type="checkbox"
+                      checked={categoryChecked.has(s.id)}
+                      onChange={() => toggleCategorySchedule(s.id)}
+                      disabled={!selectedCategoryId}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        <div className="text-left mt-2">
+          <button
+            className="px-3 py-1 text-sm bg-green-600 text-white rounded"
+            disabled={!selectedCategoryId}
+            onClick={savePricingCategories}
+          >
+            Salvează
+          </button>
+        </div>
+      </section>
 
       {showApplyModal && (
         <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-40 p-4">
