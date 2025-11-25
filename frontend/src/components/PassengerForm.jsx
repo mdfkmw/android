@@ -465,6 +465,23 @@ const PassengerForm = ({
             });
     }, [passenger.phone, getStationNameById]);
 
+    useEffect(() => {
+        const pid = passenger.person_id;
+        const baseName = personHistory?.name;
+        if (!pid || !baseName) return;
+        setPassengersData(prev => {
+            const prevEntry = prev?.[seat.id] || {};
+            if (prevEntry.person_initial_name) return prev;
+            return {
+                ...prev,
+                [seat.id]: {
+                    ...prevEntry,
+                    person_initial_name: baseName
+                }
+            };
+        });
+    }, [passenger.person_id, personHistory?.name, seat.id, setPassengersData]);
+
     // ─── Segment implicit / preferat per client ───
     // ─── Segment implicit / preferat per client ───
     useEffect(() => {
