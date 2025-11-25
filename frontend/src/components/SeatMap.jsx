@@ -27,6 +27,7 @@ const SeatMap = forwardRef(function SeatMap({
   isWideView = false,
   wideSeatSize = { width: 260, height: 150 },
   showObservations = false,
+  fontScale = 1,
 }, ref) {
 
 
@@ -51,6 +52,8 @@ const SeatMap = forwardRef(function SeatMap({
   const maxRow = seats.length > 0 ? Math.max(...seats.map(s => s.row || 1)) : 1;
 
 
+
+  const scaleFont = (size) => `${Math.max(8, Math.round(size * fontScale * 10) / 10)}px`;
 
   return (
     <div
@@ -169,30 +172,52 @@ const SeatMap = forwardRef(function SeatMap({
               height: `${seatHeight}px`,
             }}
           >
-            <div className="flex justify-between items-start font-semibold text-[13px] leading-tight mb-1">
+            <div
+              className="flex justify-between items-start font-semibold leading-tight mb-1"
+              style={{ fontSize: scaleFont(13) }}
+            >
               <span className="truncate">{seatTitle}</span>
               {activePassengers.length > 0 && (
-                <span className="text-[11px] px-2 py-1 rounded bg-white/20 text-right">
+                <span
+                  className="px-2 py-1 rounded bg-white/20 text-right"
+                  style={{ fontSize: scaleFont(11) }}
+                >
                   {activePassengers.length} pas.
                 </span>
               )}
             </div>
 
             {isDriver && driverName && (
-              <div className="text-[11px] uppercase tracking-wide text-white/80 -mt-1 mb-1">
+              <div
+                className="uppercase tracking-wide text-white/80 -mt-1 mb-1"
+                style={{ fontSize: scaleFont(11) }}
+              >
                 Șofer
               </div>
             )}
 
             {activePassengers.length > 0 && (
-              <div className="flex flex-col items-end text-right gap-1 text-[11px] leading-tight">
+              <div
+                className="flex flex-col items-end text-right gap-1 leading-tight"
+                style={{ fontSize: scaleFont(11) }}
+              >
                 {activePassengers.map((p, i) => (
                   <div key={i} className="w-full">
-                    <div className="font-semibold text-[12px] leading-tight truncate">{p.name || '(fără nume)'}</div>
-                    <div>{p.phone}</div>
-                    <div className="italic">{p.board_at} → {p.exit_at}</div>
+                    <div
+                      className="font-semibold leading-tight truncate"
+                      style={{ fontSize: scaleFont(12) }}
+                    >
+                      {p.name || '(fără nume)'}
+                    </div>
+                    <div style={{ fontSize: scaleFont(11) }}>{p.phone}</div>
+                    <div className="italic" style={{ fontSize: scaleFont(11) }}>
+                      {p.board_at} → {p.exit_at}
+                    </div>
                     {showObservations && p.observations && (
-                      <div className="mt-0.5 text-[10px] text-white/90 italic text-right whitespace-pre-line">
+                      <div
+                        className="mt-0.5 text-white/90 italic text-right whitespace-pre-line"
+                        style={{ fontSize: scaleFont(10) }}
+                      >
                         📝 {p.observations}
                       </div>
                     )}
@@ -203,12 +228,14 @@ const SeatMap = forwardRef(function SeatMap({
 
             {activePassengers[0]?.payment_method && (
               <div className="mt-1 flex justify-end">
-                <span className={`inline-block px-2 py-1 rounded text-xs font-semibold
+                <span
+                  className={`inline-block px-2 py-1 rounded font-semibold
       ${activePassengers[0].payment_method === 'cash'
                     ? 'bg-yellow-500 text-white'
                     : activePassengers[0].payment_method === 'card'
                       ? 'bg-purple-600 text-white'
                       : 'bg-gray-400 text-white'}`}
+                  style={{ fontSize: scaleFont(12) }}
                 >
                   {(() => {
                     const paid = activePassengers.find(p => p?.payment_status === 'paid');
@@ -222,7 +249,10 @@ const SeatMap = forwardRef(function SeatMap({
             )}
 
             {heldByOther && (
-              <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-45 text-[11px] font-semibold uppercase">
+              <div
+                className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-45 font-semibold uppercase"
+                style={{ fontSize: scaleFont(11) }}
+              >
                 Rezervare în curs
               </div>
             )}
