@@ -14,7 +14,13 @@ const createEmptyGrid = (stationNames) => {
   stationNames.forEach((from) => {
     base[from] = {};
     stationNames.forEach((to) => {
-      base[from][to] = { price: '', price_return: '', r_price: '', r_price_return: '' };
+      base[from][to] = {
+        price: '',
+        price_return: '',
+        r_price: '',
+        r_price_return: '',
+        local_price: '',
+      };
     });
   });
   return base;
@@ -205,8 +211,10 @@ export default function AdminPriceLists() {
               // B→A (triunghiul de jos) — se stochează în câmpurile r_* ale aceleiași celule [fromName][toName]
               next[fromName][toName].r_price = formatValue(item.price);
               next[fromName][toName].r_price_return = formatValue(item.price_return ?? '');
+            } else {
+              // i === j (diagonala) — preț în interiorul aceleiași localități
+              next[fromName][toName].local_price = formatValue(item.price);
             }
-            // i === j (diagonala) ignorăm
           });
           return next;
         });
@@ -324,11 +332,34 @@ export default function AdminPriceLists() {
 
     const payloadItems = [];
     let validationError = null;
+
+    stations.forEach((station) => {
+      if (validationError) return;
+      const diagonalCell = grid[station]?.[station];
+      if (!diagonalCell) return;
+      const hasLocal = (diagonalCell.local_price ?? '') !== '';
+      if (hasLocal && !/^\d+(\.\d{0,2})?$/.test(diagonalCell.local_price)) {
+        validationError = `Preț invalid (local) pentru ${station}`;
+        return;
+      }
+      if (hasLocal) {
+        payloadItems.push({
+          from_station_id: nameToId.get(station),
+          to_station_id: nameToId.get(station),
+          from_stop: station,
+          to_stop: station,
+          price: Number(diagonalCell.local_price),
+          price_return: null,
+          currency: 'RON',
+        });
+      }
+    });
+
     stations.forEach((from, i) => {
       if (validationError) return;
       stations.forEach((to, j) => {
         if (validationError) return;
-        if (j <= i) return; // procesăm o singură dată perechea (i<j)
+        if (j <= i) return; // procesăm o singură dată perechea (i<j); diagonala este tratată separat
 
         // ↑↑ Triunghiul de sus: A→B (T și T/R)
         const cell = grid[from]?.[to];
@@ -431,12 +462,14 @@ export default function AdminPriceLists() {
     stations.forEach((from) => {
       result[from] = {};
       stations.forEach((to) => {
-        const cell = source[from]?.[to] ?? { price: '', price_return: '', r_price: '', r_price_return: '' };
+        const cell =
+          source[from]?.[to] ?? { price: '', price_return: '', r_price: '', r_price_return: '', local_price: '' };
         result[from][to] = {
           price: cell.price ?? '',
           price_return: cell.price_return ?? '',
           r_price: cell.r_price ?? '',
           r_price_return: cell.r_price_return ?? '',
+          local_price: cell.local_price ?? '',
         };
       });
     });
@@ -805,90 +838,126 @@ const handleCopyReturnToOutbound = () => {
         </div>
       )}
       {stations.length > 0 && (
-        <div className="relative inline-block border rounded shadow bg-white p-2 max-w-full max-h-[600px] overflow-auto">
-          <table className="min-w-max table-fixed border-collapse text-[13px]">
-            <thead>
-              <tr>
-                <th
-                  className={[
-                    'border px-1 py-1 text-center w-[120px] min-w-[120px] h-[50px] sticky top-0 left-0 z-40 bg-gray-100',
-                  ].join(' ')}
-               >
-                  Stație
-                </th>
-                {stations.map((station) => {
-                  const headerHighlight = getHighlightClass(null, station);
-                  return (
-                    <th
-                      key={station}
-                      className={[
-                        'border px-1 py-1 text-center w-[90px] min-w-[90px] h-[32px] truncate sticky top-0 z-30 bg-gray-100',
-                        headerHighlight,
-                      ]
-                        .filter(Boolean)
-                        .join(' ')}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => handleToggleColumn(station)}
-                        className="w-full h-full cursor-pointer select-none focus:outline-none"
-                        title="Selectează coloana"
-                      >
-                        {station}
-                      </button>
-                    </th>
-                  );
-                })}
-              </tr>
-            </thead>
-            <tbody>
-              {loadingItems ? (
+        <div className="space-y-4">
+          <div className="relative inline-block border rounded shadow bg-white p-2 max-w-full max-h-[600px] overflow-auto">
+            <table className="min-w-max table-fixed border-collapse text-[13px]">
+              <thead>
                 <tr>
-                  <td colSpan={stations.length + 1} className="border px-1 py-1 text-center">
-                    Se încarcă prețurile…
-                  </td>
-                </tr>
-              ) : (
-                stations.map((from, i) => (
-                  <tr key={from} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-100'}>
-                    <td
-                      className={[
-                        'border px-1 py-1 text-black font-bold text-center w-[120px] min-w-[120px] h-[32px] align-middle sticky left-0 z-30 bg-white',
-                        getHighlightClass(from, null),
-                      ]
-                        .filter(Boolean)
-                        .join(' ')}
-                    >
-                      <button
-                        type="button"
-                        onClick={() => handleToggleRow(from)}
-                        className="w-full h-full cursor-pointer select-none focus:outline-none"
-                        title="Selectează linia"
+                  <th
+                    className={[
+                      'border px-1 py-1 text-center w-[120px] min-w-[120px] h-[50px] sticky top-0 left-0 z-40 bg-gray-100',
+                    ].join(' ')}
+                  >
+                    Stație
+                  </th>
+                  {stations.map((station) => {
+                    const headerHighlight = getHighlightClass(null, station);
+                    return (
+                      <th
+                        key={station}
+                        className={[
+                          'border px-1 py-1 text-center w-[90px] min-w-[90px] h-[32px] truncate sticky top-0 z-30 bg-gray-100',
+                          headerHighlight,
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
                       >
-                        {from}
-                      </button>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleColumn(station)}
+                          className="w-full h-full cursor-pointer select-none focus:outline-none"
+                          title="Selectează coloana"
+                        >
+                          {station}
+                        </button>
+                      </th>
+                    );
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {loadingItems ? (
+                  <tr>
+                    <td colSpan={stations.length + 1} className="border px-1 py-1 text-center">
+                      Se încarcă prețurile…
                     </td>
-                    {stations.map((to, j) => {
-                      const highlight = getHighlightClass(from, to);
-                      if (j === i) {
-                        return (
-                          <td
-                            key={`${from}-${to}`}
-                            className={[
-                              'border px-1 py-1 text-center w-[90px] min-w-[90px] h-[32px] align-middle bg-gray-100',
-                              highlight,
-                            ]
-                              .filter(Boolean)
-                              .join(' ')}
-                          >
-                            <div className="w-full h-[50px]" />
-                          </td>
-                        );
-                      }
+                  </tr>
+                ) : (
+                  stations.map((from, i) => (
+                    <tr key={from} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-100'}>
+                      <td
+                        className={[
+                          'border px-1 py-1 text-black font-bold text-center w-[120px] min-w-[120px] h-[32px] align-middle sticky left-0 z-30 bg-white',
+                          getHighlightClass(from, null),
+                        ]
+                          .filter(Boolean)
+                          .join(' ')}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => handleToggleRow(from)}
+                          className="w-full h-full cursor-pointer select-none focus:outline-none"
+                          title="Selectează linia"
+                        >
+                          {from}
+                        </button>
+                      </td>
+                      {stations.map((to, j) => {
+                        const highlight = getHighlightClass(from, to);
+                        if (j === i) {
+                          return (
+                            <td
+                              key={`${from}-${to}`}
+                              className={[
+                                'border px-1 py-1 text-center w-[90px] min-w-[90px] h-[32px] align-middle bg-gray-100',
+                                highlight,
+                              ]
+                                .filter(Boolean)
+                                .join(' ')}
+                            >
+                              <div className="w-full h-[50px]" />
+                            </td>
+                          );
+                        }
 
-                      const cell = grid[from]?.[to];
+                        const cell = grid[from]?.[to];
 
-                      if (j > i) {
+                        if (j > i) {
+                          return (
+                            <td
+                              key={`${from}-${to}`}
+                              className={[
+                                'border px-1 py-1 text-center w-[90px] min-w-[90px] h-[32px] align-middle',
+                                highlight,
+                              ]
+                                .filter(Boolean)
+                                .join(' ')}
+                            >
+                              <div className="flex flex-col items-stretch gap-[4px]">
+                                <span className="text-[10px] font-semibold uppercase text-gray-600 text-center">Tur</span>
+                                <div className="flex items-center gap-[4px]">
+                                  <label className="w-[24px] text-[9px] font-medium text-gray-600 text-center">T</label>
+                                  <input
+                                    className="w-[54px] h-[20px] px-1 text-[13px] border border-gray-300 rounded text-center focus:outline-none"
+                                    value={cell?.price ?? ''}
+                                    onChange={(e) => handleCellChange(from, to, 'price', e.target.value)}
+                                  />
+                                </div>
+                                <div className="flex items-center gap-[4px]">
+                                  <label className="w-[24px] text-[9px] font-medium text-gray-600 text-center">T/R</label>
+                                  <input
+                                    className="w-[54px] h-[20px] px-1 text-[13px] border border-gray-300 rounded text-center focus:outline-none"
+                                    value={cell?.price_return ?? ''}
+                                    onChange={(e) => handleCellChange(from, to, 'price_return', e.target.value)}
+                                  />
+                                </div>
+                              </div>
+                            </td>
+                          );
+                        }
+
+
+                        const cellDown = grid[from]?.[to];
                         return (
                           <td
                             key={`${from}-${to}`}
@@ -900,68 +969,53 @@ const handleCopyReturnToOutbound = () => {
                               .join(' ')}
                           >
                             <div className="flex flex-col items-stretch gap-[4px]">
-                              <span className="text-[10px] font-semibold uppercase text-gray-600 text-center">Tur</span>
+                              <span className="text-[10px] font-semibold uppercase text-gray-600 text-center">Retur</span>
                               <div className="flex items-center gap-[4px]">
-                                <label className="w-[24px] text-[9px] font-medium text-gray-600 text-center">T</label>
+                                <label className="w-[24px] text-[9px] font-medium text-gray-600 text-center">R</label>
                                 <input
                                   className="w-[54px] h-[20px] px-1 text-[13px] border border-gray-300 rounded text-center focus:outline-none"
-                                  value={cell?.price ?? ''}
-                                  onChange={(e) => handleCellChange(from, to, 'price', e.target.value)}
+                                  value={cellDown?.r_price ?? ''}
+                                  onChange={(e) => handleCellChange(from, to, 'r_price', e.target.value)}
                                 />
                               </div>
                               <div className="flex items-center gap-[4px]">
-                                <label className="w-[24px] text-[9px] font-medium text-gray-600 text-center">T/R</label>
+                                <label className="w-[24px] text-[9px] font-medium text-gray-600 text-center">R/T</label>
                                 <input
                                   className="w-[54px] h-[20px] px-1 text-[13px] border border-gray-300 rounded text-center focus:outline-none"
-                                  value={cell?.price_return ?? ''}
-                                  onChange={(e) => handleCellChange(from, to, 'price_return', e.target.value)}
+                                  value={cellDown?.r_price_return ?? ''}
+                                  onChange={(e) => handleCellChange(from, to, 'r_price_return', e.target.value)}
                                 />
                               </div>
                             </div>
                           </td>
                         );
-                      }
 
+                      })}
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
 
-                      const cellDown = grid[from]?.[to];
-                      return (
-                        <td
-                          key={`${from}-${to}`}
-                          className={[
-                            'border px-1 py-1 text-center w-[90px] min-w-[90px] h-[32px] align-middle',
-                            highlight,
-                          ]
-                            .filter(Boolean)
-                            .join(' ')}
-                        >
-                          <div className="flex flex-col items-stretch gap-[4px]">
-                            <span className="text-[10px] font-semibold uppercase text-gray-600 text-center">Retur</span>
-                            <div className="flex items-center gap-[4px]">
-                              <label className="w-[24px] text-[9px] font-medium text-gray-600 text-center">R</label>
-                              <input
-                                className="w-[54px] h-[20px] px-1 text-[13px] border border-gray-300 rounded text-center focus:outline-none"
-                                value={cellDown?.r_price ?? ''}
-                                onChange={(e) => handleCellChange(from, to, 'r_price', e.target.value)}
-                              />
-                            </div>
-                            <div className="flex items-center gap-[4px]">
-                              <label className="w-[24px] text-[9px] font-medium text-gray-600 text-center">R/T</label>
-                              <input
-                                className="w-[54px] h-[20px] px-1 text-[13px] border border-gray-300 rounded text-center focus:outline-none"
-                                value={cellDown?.r_price_return ?? ''}
-                                onChange={(e) => handleCellChange(from, to, 'r_price_return', e.target.value)}
-                              />
-                            </div>
-                          </div>
-                        </td>
-                      );
-
-                    })}
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+          <div className="border rounded shadow bg-white p-3">
+            <h3 className="text-sm font-semibold text-gray-700 mb-2">Preț pe segment în interiorul aceleiași localități</h3>
+            <div className="overflow-x-auto">
+              <div className="flex items-end gap-6 min-w-[320px]">
+                {stations.map((station) => (
+                  <div key={station} className="flex flex-col items-center gap-1">
+                    <span className="text-xs font-semibold text-gray-700 text-center whitespace-nowrap">{station}</span>
+                    <input
+                      className="w-[70px] h-[28px] px-2 text-[13px] border border-gray-300 rounded text-center focus:outline-none"
+                      value={grid[station]?.[station]?.local_price ?? ''}
+                      onChange={(e) => handleCellChange(station, station, 'local_price', e.target.value)}
+                      placeholder="0"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
