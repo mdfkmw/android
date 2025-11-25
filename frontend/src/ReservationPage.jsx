@@ -737,6 +737,11 @@ export default function ReservationPage({ userRole, user }) {
 
     const clampText = (value, font) => {
       if (!value) return '';
+      // În modul „Vedere largă” folosim dimensiunile alese pe ecran și nu mai trunchiem textul
+      // pentru a păstra exact informațiile vizibile în UI.
+      if (isWideView) {
+        return value;
+      }
       const ellipsis = '…';
       ctx.font = font;
       if (ctx.measureText(value).width <= textWidthLimit) {
