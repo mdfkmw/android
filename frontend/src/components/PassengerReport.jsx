@@ -145,6 +145,31 @@ export default function PassengerReport() {
     blacklist
   } = data;
 
+  const logPassengerRename = async (oldName, newName) => {
+    const trimmedOld = String(oldName || '').trim();
+    const trimmedNew = String(newName || '').trim();
+    if (!trimmedOld || !trimmedNew || trimmedOld === trimmedNew) return;
+    try {
+      await fetch('/api/audit-logs/passenger-name-change', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({
+          changes: [
+            {
+              reservation_id: null,
+              person_id: Number(personId),
+              old_name: trimmedOld,
+              new_name: trimmedNew,
+            }
+          ]
+        })
+      });
+    } catch (err) {
+      console.warn('[audit] nu am putut loga redenumirea persoanei', err);
+    }
+  };
+
   const formatRoDate = (value) => {
     if (!value) return '';
     const date = new Date(value);
@@ -217,6 +242,7 @@ export default function PassengerReport() {
                 });
                 const js = await r.json();
       if (!r.ok || !js?.success) throw new Error(js?.error || 'Eroare la salvare');
+      await logPassengerRename(personName, editName);
       // reîncarcă raportul ca să vezi valorile (și în DB, și în UI)
       const rep = await fetch(`/api/people/${personId}/report`).then(x => x.json());
       setData(rep);

@@ -631,6 +631,7 @@ export default function ReservationPage({ userRole, user }) {
   // 🧭 Toate locurile disponibile pentru vehiculul curent
   const [seats, setSeats] = useState([]);
   const initialPassengerNamesRef = useRef(new Map());
+  const initialPersonNamesRef = useRef(new Map());
   const isGridViewActive = seatViewMode === 'grid';
   const exportButtonsDisabled = !isGridViewActive || seats.length === 0 || isExportingSeatMap;
   // 🛣️ Lista rutelor disponibile din baza de date
@@ -686,12 +687,25 @@ export default function ReservationPage({ userRole, user }) {
         if (p?.reservation_id && p?.name && !map.has(p.reservation_id)) {
           map.set(p.reservation_id, String(p.name));
         }
+        if (p?.person_id && p?.name && !initialPersonNamesRef.current.has(p.person_id)) {
+          initialPersonNamesRef.current.set(p.person_id, String(p.name));
+        }
       });
     });
   }, [seats]);
   const [moveSourceSeat, setMoveSourceSeat] = useState(null);
   const [paying, setPaying] = useState(false);
   const lastSelectedSeatIdsRef = useRef([]);
+
+  useEffect(() => {
+    const map = initialPersonNamesRef.current;
+    Object.values(passengersData || {}).forEach((entry) => {
+      if (!entry?.person_id) return;
+      const baseName = String(entry.person_initial_name || '').trim();
+      if (!baseName || map.has(entry.person_id)) return;
+      map.set(entry.person_id, baseName);
+    });
+  }, [passengersData]);
 
   useEffect(() => {
     intentsRef.current = intentHolds;
@@ -3108,14 +3122,20 @@ export default function ReservationPage({ userRole, user }) {
             passengerPayload.version = version;
           }
 
-          if (passengerPayload.reservation_id) {
-            const oldName = initialPassengerNamesRef.current.get(passengerPayload.reservation_id);
+          if (passengerPayload.reservation_id || passengerPayload.person_id) {
+            const oldReservationName = passengerPayload.reservation_id
+              ? initialPassengerNamesRef.current.get(passengerPayload.reservation_id)
+              : null;
+            const oldPersonName = passengerPayload.person_id
+              ? initialPersonNamesRef.current.get(passengerPayload.person_id)
+              : null;
+            const baselineName = oldReservationName || oldPersonName || '';
             const newName = String(passengerPayload.name || '').trim();
-            if (oldName && newName && oldName.trim() !== newName) {
+            if (baselineName && newName && baselineName.trim() !== newName) {
               nameChanges.push({
-                reservation_id: passengerPayload.reservation_id,
+                reservation_id: passengerPayload.reservation_id || null,
                 person_id: passengerPayload.person_id || null,
-                old_name: oldName,
+                old_name: baselineName,
                 new_name: newName,
               });
             }
@@ -3181,6 +3201,9 @@ export default function ReservationPage({ userRole, user }) {
         nameChanges.forEach((c) => {
           if (c.reservation_id) {
             initialPassengerNamesRef.current.set(c.reservation_id, c.new_name);
+          }
+          if (c.person_id) {
+            initialPersonNamesRef.current.set(c.person_id, c.new_name);
           }
         });
       }
