@@ -4,11 +4,16 @@ const db = require('../../db');
 
 router.get('/', async (req, res) => {
   try {
-    const { rows } = await db.query(`
-      SELECT id, name
+        const { rows } = await db.query(`
+      SELECT
+        id,
+        name,
+        latitude,
+        longitude
       FROM stations
       ORDER BY name
     `);
+
 
     res.json(rows);
   } catch (err) {
