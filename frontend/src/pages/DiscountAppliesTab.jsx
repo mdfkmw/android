@@ -1,16 +1,20 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 
-export default function DiscountAppliesTab() {
+export default function DiscountAppliesTab({ activeDiscountId: controlledDiscountId = null, onActiveChange, onClose }) {
   const [discounts, setDiscounts] = useState([]);
   const [schedules, setSchedules] = useState([]);
-  const [activeDiscountId, setActiveDiscountId] = useState(null);
+  const [internalActiveDiscountId, setInternalActiveDiscountId] = useState(null);
   const [discountAssignments, setDiscountAssignments] = useState(new Map());
   const [loadingDiscount, setLoadingDiscount] = useState(false);
   const [savingDiscount, setSavingDiscount] = useState(false);
   const [pricingCategories, setPricingCategories] = useState([]);
   const [selCategory, setSelCategory] = useState('');
   const [catChecked, setCatChecked] = useState(new Set());
+  const [routeFilter, setRouteFilter] = useState('');
+
+  const setActiveDiscountId = onActiveChange ?? setInternalActiveDiscountId;
+  const activeDiscountId = controlledDiscountId ?? internalActiveDiscountId;
 
   // sorting state
   const [sortConfig, setSortConfig] = useState({ key: 'route_name', direction: 'asc' });
@@ -26,6 +30,12 @@ export default function DiscountAppliesTab() {
       })
       .catch(() => setPricingCategories([]));
   }, []);
+
+  useEffect(() => {
+    if (controlledDiscountId != null) {
+      setInternalActiveDiscountId(controlledDiscountId);
+    }
+  }, [controlledDiscountId]);
 
   useEffect(() => {
     if (discounts.length === 0) return;
@@ -51,6 +61,7 @@ export default function DiscountAppliesTab() {
         const raw = Array.isArray(r.data) ? r.data : [];
         const agents = new Set();
         const online = new Set();
+        const driver = new Set();
         raw.forEach((item) => {
           if (item == null) return;
           if (typeof item === 'number') {
@@ -68,6 +79,9 @@ export default function DiscountAppliesTab() {
           if (item.visible_online ?? item.online ?? false) {
             online.add(schedId);
           }
+          if (item.visible_driver ?? item.driver ?? false) {
+            driver.add(schedId);
+          }
         });
 
         setDiscountAssignments((prev) => {
@@ -75,6 +89,7 @@ export default function DiscountAppliesTab() {
           next.set(activeDiscountId, {
             agents,
             online,
+            driver,
             loaded: true,
             dirty: false,
           });
@@ -88,6 +103,7 @@ export default function DiscountAppliesTab() {
           next.set(activeDiscountId, {
             agents: new Set(),
             online: new Set(),
+            driver: new Set(),
             loaded: true,
             dirty: false,
           });
@@ -119,6 +135,7 @@ export default function DiscountAppliesTab() {
   const activeEntry = activeDiscountId ? discountAssignments.get(activeDiscountId) : null;
   const activeAgents = activeEntry?.agents ?? new Set();
   const activeOnline = activeEntry?.online ?? new Set();
+  const activeDriver = activeEntry?.driver ?? new Set();
   const isDirty = !!activeEntry?.dirty;
 
   function toggleAgents(id) {
@@ -128,6 +145,7 @@ export default function DiscountAppliesTab() {
       const previous = next.get(activeDiscountId) || {
         agents: new Set(),
         online: new Set(),
+        driver: new Set(),
         loaded: true,
         dirty: false,
       };
@@ -150,6 +168,7 @@ export default function DiscountAppliesTab() {
       const previous = next.get(activeDiscountId) || {
         agents: new Set(),
         online: new Set(),
+        driver: new Set(),
         loaded: true,
         dirty: false,
       };
@@ -165,18 +184,43 @@ export default function DiscountAppliesTab() {
     });
   }
 
+  function toggleDriver(id) {
+    if (!activeDiscountId) return;
+    setDiscountAssignments((prev) => {
+      const next = new Map(prev);
+      const previous = next.get(activeDiscountId) || {
+        agents: new Set(),
+        online: new Set(),
+        driver: new Set(),
+        loaded: true,
+        dirty: false,
+      };
+      const driver = new Set(previous.driver);
+      driver.has(id) ? driver.delete(id) : driver.add(id);
+      next.set(activeDiscountId, {
+        ...previous,
+        driver,
+        dirty: true,
+        loaded: true,
+      });
+      return next;
+    });
+  }
+
   async function save() {
     if (!activeDiscountId) return;
     const entry = discountAssignments.get(activeDiscountId) || {
       agents: new Set(),
       online: new Set(),
+      driver: new Set(),
     };
 
-    const union = new Set([...(entry.agents ?? []), ...(entry.online ?? [])]);
+    const union = new Set([...(entry.agents ?? []), ...(entry.online ?? []), ...(entry.driver ?? [])]);
     const payload = Array.from(union).map((id) => ({
       scheduleId: id,
       visibleAgents: entry.agents?.has(id) ?? false,
       visibleOnline: entry.online?.has(id) ?? false,
+      visibleDriver: entry.driver?.has(id) ?? false,
     }));
 
     setSavingDiscount(true);
@@ -240,6 +284,21 @@ export default function DiscountAppliesTab() {
     return sortable;
   }, [schedules, sortConfig]);
 
+  const availableRoutes = useMemo(() => {
+    const map = new Map();
+    schedules.forEach(s => {
+      if (!map.has(s.route_id)) {
+        map.set(s.route_id, s.route_name);
+      }
+    });
+    return Array.from(map.entries()).map(([id, name]) => ({ id, name }));
+  }, [schedules]);
+
+  const filteredSchedules = useMemo(() => {
+    if (!routeFilter) return sortedSchedules;
+    return sortedSchedules.filter(s => String(s.route_id) === String(routeFilter));
+  }, [sortedSchedules, routeFilter]);
+
   const activeDiscount = discounts.find((d) => d.id === activeDiscountId) || null;
 
   return (
@@ -281,6 +340,29 @@ export default function DiscountAppliesTab() {
           )}
         </div>
 
+        <div className="flex items-center gap-3 mb-3 flex-wrap">
+          <label className="text-sm font-medium">Filtrează traseul:</label>
+          <select
+            className="p-2 text-sm border rounded"
+            value={routeFilter}
+            onChange={e => setRouteFilter(e.target.value)}
+          >
+            <option value="">Toate traseele</option>
+            {availableRoutes.map(route => (
+              <option key={route.id} value={route.id}>{route.name}</option>
+            ))}
+          </select>
+          {onClose && (
+            <button
+              type="button"
+              className="ml-auto px-3 py-1 text-xs rounded bg-gray-100 hover:bg-gray-200 border"
+              onClick={onClose}
+            >
+              Închide
+            </button>
+          )}
+        </div>
+
         <div className="overflow-x-auto">
           <table className="w-auto text-sm table-auto border-collapse">
             <thead>
@@ -305,10 +387,11 @@ export default function DiscountAppliesTab() {
                 </th>
                 <th className="p-1 border text-left bg-gray-200">Agenți</th>
                 <th className="p-1 border text-left bg-gray-200">Online</th>
+                <th className="p-1 border text-left bg-gray-200">Șofer</th>
               </tr>
             </thead>
             <tbody>
-              {sortedSchedules.map((s, idx) => (
+              {filteredSchedules.map((s, idx) => (
                 <tr
                   key={s.id}
                   className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
@@ -329,6 +412,14 @@ export default function DiscountAppliesTab() {
                       type="checkbox"
                       checked={activeOnline.has(s.id)}
                       onChange={() => toggleOnline(s.id)}
+                      disabled={!activeDiscountId}
+                    />
+                  </td>
+                  <td className="p-1 border text-center">
+                    <input
+                      type="checkbox"
+                      checked={activeDriver.has(s.id)}
+                      onChange={() => toggleDriver(s.id)}
                       disabled={!activeDiscountId}
                     />
                   </td>
@@ -395,7 +486,7 @@ export default function DiscountAppliesTab() {
               </tr>
             </thead>
             <tbody>
-              {sortedSchedules.map((s, idx) => (
+              {filteredSchedules.map((s, idx) => (
                 <tr
                   key={s.id}
                   className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}

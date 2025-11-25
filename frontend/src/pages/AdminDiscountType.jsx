@@ -2,16 +2,25 @@ import React, { useEffect, useMemo, useState } from 'react';
 import axios from 'axios';
 import DiscountAppliesTab from './DiscountAppliesTab';
 
+const defaultDiscount = {
+  code: '',
+  label: '',
+  value_off: '',
+  type: 'percent',
+  description_required: false,
+  description_label: '',
+  date_limited: false,
+  valid_from: '',
+  valid_to: '',
+};
+
 const AdminDiscountType = () => {
   const [discounts, setDiscounts] = useState([]);
-  const [newDiscount, setNewDiscount] = useState({
-    code: '',
-    label: '',
-    value_off: '',
-    type: 'percent',
-  });
+  const [newDiscount, setNewDiscount] = useState({ ...defaultDiscount });
   const [showAddModal, setShowAddModal] = useState(false);
   const [editingDiscount, setEditingDiscount] = useState(null);
+  const [showApplyModal, setShowApplyModal] = useState(false);
+  const [applyDiscountId, setApplyDiscountId] = useState(null);
 
   // sorting state
   const [sortConfig, setSortConfig] = useState({ key: 'id', direction: 'asc' });
@@ -27,6 +36,14 @@ const AdminDiscountType = () => {
 
   const handleSave = async () => {
     if (!newDiscount.code || !newDiscount.label || !newDiscount.value_off) return;
+    if (newDiscount.description_required && !newDiscount.description_label.trim()) {
+      alert('Te rugăm să completezi textul pentru descriere.');
+      return;
+    }
+    if (newDiscount.date_limited && (!newDiscount.valid_from || !newDiscount.valid_to)) {
+      alert('Completează atât data de început cât și cea de sfârșit pentru perioada de valabilitate.');
+      return;
+    }
     if (editingDiscount) {
       await axios.put(
         `/api/discount-types/${editingDiscount.id}`,
@@ -37,7 +54,7 @@ const AdminDiscountType = () => {
     }
     setShowAddModal(false);
     setEditingDiscount(null);
-    setNewDiscount({ code: '', label: '', value_off: '', type: 'percent' });
+    setNewDiscount({ ...defaultDiscount });
     fetchDiscounts();
   };
 
@@ -48,6 +65,11 @@ const AdminDiscountType = () => {
       label: discount.label,
       value_off: discount.value_off,
       type: discount.type,
+      description_required: Boolean(discount.description_required),
+      description_label: discount.description_label || '',
+      date_limited: Boolean(discount.date_limited),
+      valid_from: discount.valid_from ? String(discount.valid_from).slice(0, 10) : '',
+      valid_to: discount.valid_to ? String(discount.valid_to).slice(0, 10) : '',
     });
     setShowAddModal(true);
   };
@@ -101,7 +123,7 @@ const AdminDiscountType = () => {
         className="mb-4 px-3 py-1 text-sm bg-blue-600 text-white rounded"
         onClick={() => {
           setEditingDiscount(null);
-          setNewDiscount({ code: '', label: '', value_off: '', type: 'percent' });
+          setNewDiscount({ ...defaultDiscount });
           setShowAddModal(true);
         }}
       >
@@ -141,6 +163,15 @@ const AdminDiscountType = () => {
                 {`${parseFloat(d.value_off) % 1 === 0 ? parseInt(d.value_off) : parseFloat(d.value_off)}${d.type === 'percent' ? '%' : ''}`}
               </td>
               <td className="p-1 border space-x-2">
+                <button
+                  className="px-2 py-1 text-xs bg-indigo-600 text-white rounded"
+                  onClick={() => {
+                    setApplyDiscountId(d.id);
+                    setShowApplyModal(true);
+                  }}
+                >
+                  Se aplică la
+                </button>
                 <button
                   className="px-2 py-1 text-xs bg-blue-500 text-white rounded"
                   onClick={() => handleEdit(d)}
@@ -209,12 +240,64 @@ const AdminDiscountType = () => {
                 Valoare fixă
               </label>
             </div>
+            <div className="mb-3 text-sm border rounded p-2 space-y-2">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={newDiscount.description_required}
+                  onChange={(e) => setNewDiscount({ ...newDiscount, description_required: e.target.checked })}
+                />
+                Descriere obligatorie (completată de șofer la îmbarcare)
+              </label>
+              {newDiscount.description_required && (
+                <input
+                  type="text"
+                  placeholder="Text implicit pentru descriere"
+                  className="w-full px-2 py-1 border rounded text-sm"
+                  value={newDiscount.description_label}
+                  onChange={(e) => setNewDiscount({ ...newDiscount, description_label: e.target.value })}
+                />
+              )}
+            </div>
+            <div className="mb-3 text-sm border rounded p-2 space-y-2">
+              <label className="flex items-center gap-2 text-sm font-medium">
+                <input
+                  type="checkbox"
+                  checked={newDiscount.date_limited}
+                  onChange={(e) => setNewDiscount({ ...newDiscount, date_limited: e.target.checked })}
+                />
+                Valabil doar într-o perioadă
+              </label>
+              {newDiscount.date_limited && (
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <div className="text-xs text-gray-600 mb-1">De la</div>
+                    <input
+                      type="date"
+                      className="w-full px-2 py-1 border rounded text-sm"
+                      value={newDiscount.valid_from}
+                      onChange={(e) => setNewDiscount({ ...newDiscount, valid_from: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <div className="text-xs text-gray-600 mb-1">Până la</div>
+                    <input
+                      type="date"
+                      className="w-full px-2 py-1 border rounded text-sm"
+                      value={newDiscount.valid_to}
+                      onChange={(e) => setNewDiscount({ ...newDiscount, valid_to: e.target.value })}
+                    />
+                  </div>
+                </div>
+              )}
+            </div>
             <div className="flex justify-end gap-2">
               <button
                 className="px-3 py-1 bg-gray-300 rounded text-sm"
                 onClick={() => {
                   setShowAddModal(false);
                   setEditingDiscount(null);
+                  setNewDiscount({ ...defaultDiscount });
                 }}
               >
                 Anulează
@@ -231,7 +314,33 @@ const AdminDiscountType = () => {
       )}
       </div>
 
-      <DiscountAppliesTab />
+      {showApplyModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-40 p-4">
+          <div className="bg-white rounded shadow-lg w-full max-w-5xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b">
+              <div>
+                <div className="text-base font-semibold">Configurează unde se aplică reducerea</div>
+                {applyDiscountId && (
+                  <div className="text-xs text-gray-600">Discount selectat ID #{applyDiscountId}</div>
+                )}
+              </div>
+              <button
+                className="px-3 py-1 text-sm rounded bg-gray-200 hover:bg-gray-300"
+                onClick={() => setShowApplyModal(false)}
+              >
+                Închide
+              </button>
+            </div>
+            <div className="overflow-y-auto p-4 flex-1">
+              <DiscountAppliesTab
+                activeDiscountId={applyDiscountId}
+                onActiveChange={setApplyDiscountId}
+                onClose={() => setShowApplyModal(false)}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
