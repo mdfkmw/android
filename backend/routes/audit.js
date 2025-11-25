@@ -2,6 +2,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../db');
+const { requireAuth } = require('../middleware/auth');
 
 function serializePayload(payload) {
   if (!payload) return null;
@@ -197,6 +198,47 @@ router.get('/audit-logs', ensureAdmin, async (req, res) => {
   } catch (e) {
     console.error('[GET /api/audit-logs]', e);
     res.status(500).json({ error: 'server error' });
+  }
+});
+
+// 🧾 POST /api/audit-logs/passenger-name-change
+// Loghează orice modificare de nume pentru un călător (din frontend)
+router.post('/audit-logs/passenger-name-change', requireAuth, async (req, res) => {
+  try {
+    const { changes } = req.body || {};
+    if (!Array.isArray(changes) || changes.length === 0) {
+      return res.status(400).json({ error: 'missing changes' });
+    }
+
+    let logged = 0;
+    for (const item of changes) {
+      const oldName = String(item?.old_name || '').trim();
+      const newName = String(item?.new_name || '').trim();
+      const reservationId = item?.reservation_id || null;
+      const personId = item?.person_id || null;
+
+      if (!oldName || !newName || oldName === newName || (!reservationId && !personId)) {
+        continue;
+      }
+
+      await writeAudit({
+        actorId: req.user?.id || null,
+        entity: personId ? 'person' : 'reservation',
+        entityId: personId || reservationId,
+        relatedEntity: personId ? 'reservation' : null,
+        relatedId: personId ? reservationId : null,
+        action: 'person.rename',
+        note: `Nume modificat: "${oldName}" → "${newName}"`,
+        before: { name: oldName },
+        after: { name: newName },
+      });
+      logged += 1;
+    }
+
+    return res.json({ success: true, logged });
+  } catch (err) {
+    console.error('[audit/passenger-name-change] error', err);
+    return res.status(500).json({ error: 'server error' });
   }
 });
 
