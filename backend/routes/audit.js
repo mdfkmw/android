@@ -33,6 +33,8 @@ router.get('/audit-logs', ensureAdmin, async (req, res) => {
         OR al.action LIKE 'person.blacklist.%'
         OR al.action = 'person.noshow.add'
         OR al.action = 'person.noshow.remove'
+        OR al.action LIKE 'vehicle.%'
+        OR al.action LIKE 'trip.vehicle.%'
       )
     `;
     if (from) { where += ` AND DATE(al.created_at) >= ?`; params.push(from); }

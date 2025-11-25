@@ -1,27 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 
-const STATUS_META = {
-  answered: { label: 'Răspuns', badge: 'bg-green-100 text-green-800 border border-green-200' },
-  missed: { label: 'Ne răspuns', badge: 'bg-yellow-100 text-yellow-800 border border-yellow-200' },
-  rejected: { label: 'Respins', badge: 'bg-red-100 text-red-800 border border-red-200' },
-  ringing: { label: 'Sună', badge: 'bg-blue-100 text-blue-800 border border-blue-200' },
-};
-
 function formatDate(value, fmt) {
   if (!value) return '—';
   const parsed = dayjs(value);
   if (!parsed.isValid()) return '—';
   return parsed.format(fmt);
-}
-
-function StatusBadge({ status }) {
-  const meta = STATUS_META[status] ?? { label: 'Necunoscut', badge: 'bg-gray-100 text-gray-700 border border-gray-200' };
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${meta.badge}`}>
-      {meta.label}
-    </span>
-  );
 }
 
 export default function AdminCallLog() {
@@ -62,9 +46,7 @@ export default function AdminCallLog() {
     date: formatDate(entry.received_at, 'DD.MM.YYYY'),
     time: formatDate(entry.received_at, 'HH:mm:ss'),
     phone: entry.phone || entry.digits || '—',
-    name: entry.caller_name || 'Fără nume asociat',
-    status: entry.status || 'ringing',
-    note: entry.note || '—',
+    name: entry.caller_name || 'Nume neasociat',
   })), [entries]);
 
   return (
@@ -122,36 +104,29 @@ export default function AdminCallLog() {
         </div>
       )}
 
-      {!loading && !!rows.length && (
-        <div className="overflow-x-auto">
-          <table className="min-w-full text-sm border border-gray-200">
-            <thead className="bg-gray-100 text-left">
-              <tr>
-                <th className="p-2 border-b border-gray-200">Data</th>
-                <th className="p-2 border-b border-gray-200">Ora (cu secunde)</th>
-                <th className="p-2 border-b border-gray-200">Telefon / Nume</th>
-                <th className="p-2 border-b border-gray-200">Status</th>
-                <th className="p-2 border-b border-gray-200">Observații</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((row) => (
-                <tr key={row.id} className="odd:bg-white even:bg-gray-50">
-                  <td className="p-2 align-top whitespace-nowrap">{row.date}</td>
-                  <td className="p-2 align-top whitespace-nowrap font-mono">{row.time}</td>
-                  <td className="p-2 align-top">
-                    <div className="font-mono text-base">{row.phone}</div>
-                    <div className="text-xs text-gray-500">{row.name}</div>
-                  </td>
-                  <td className="p-2 align-top">
-                    <StatusBadge status={row.status} />
-                  </td>
-                  <td className="p-2 align-top text-gray-700">{row.note}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+          {!loading && !!rows.length && (
+            <div className="overflow-x-auto">
+              <table className="min-w-full text-sm border border-gray-200">
+                <thead className="bg-gray-100 text-left">
+                  <tr>
+                    <th className="p-2 border-b border-gray-200">Data</th>
+                    <th className="p-2 border-b border-gray-200">Ora (cu secunde)</th>
+                    <th className="p-2 border-b border-gray-200">Telefon</th>
+                    <th className="p-2 border-b border-gray-200">Nume asociat</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rows.map((row) => (
+                    <tr key={row.id} className="odd:bg-white even:bg-gray-50">
+                      <td className="p-2 align-top whitespace-nowrap">{row.date}</td>
+                      <td className="p-2 align-top whitespace-nowrap font-mono">{row.time}</td>
+                      <td className="p-2 align-top font-mono text-base">{row.phone}</td>
+                      <td className="p-2 align-top text-gray-700">{row.name}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
       )}
     </div>
   );

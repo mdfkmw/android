@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { writeAudit } = require('../utils/auditLogger');
 
 // ✅ Toți utilizatorii autentificați pot CITI; scrierea rămâne restricționată
 router.use(requireAuth);
@@ -277,10 +278,28 @@ router.patch('/:id', async (req, res) => {
   const { id } = req.params;
   const { name, seat_count, type, plate_number, operator_id } = req.body || {};
   try {
+    const { rows: beforeRows } = await db.query('SELECT * FROM vehicles WHERE id=? LIMIT 1', [id]);
+    if (!beforeRows || beforeRows.length === 0) {
+      return res.status(404).json({ error: 'Vehicul inexistent' });
+    }
+
     await db.query(
       `UPDATE vehicles SET name=?, seat_count=?, type=?, plate_number=?, operator_id=? WHERE id=?`,
       [name, seat_count, type, plate_number, operator_id, id]
     );
+
+    const { rows: afterRows } = await db.query('SELECT * FROM vehicles WHERE id=? LIMIT 1', [id]);
+
+    await writeAudit({
+      actorId: req.user?.id,
+      entity: 'vehicle',
+      entityId: id,
+      action: 'vehicle.update',
+      note: 'Vehicul actualizat',
+      before: beforeRows?.[0] || null,
+      after: afterRows?.[0] || null,
+    });
+
     res.json({ ok: true });
   } catch (err) {
     console.error('Eroare la PATCH /api/vehicles/:id →', err);
@@ -308,6 +327,16 @@ router.post('/', requireRole('admin','operator_admin'), async (req, res) => {
     // ia ID-ul garantat pe conexiune
     const { rows: idRow } = await db.query(`SELECT LAST_INSERT_ID() AS id`);
     const newId = idRow && idRow[0] ? idRow[0].id : null;
+
+    await writeAudit({
+      actorId: req.user?.id,
+      entity: 'vehicle',
+      entityId: newId,
+      action: 'vehicle.create',
+      note: name ? `Vehicul creat: ${name}` : 'Vehicul creat',
+      after: { name, plate_number, type, operator_id, seat_count },
+    });
+
     res.status(201).json({ id: newId, ok: true });
   } catch (err) {
     console.error('Eroare la POST /api/vehicles →', err);
@@ -335,7 +364,7 @@ router.delete('/:id', requireRole('admin','operator_admin'), async (req, res) =>
 
     // 0) Existență (și blocăm rândul pe durata operației)
     const [[exists]] = await conn.query(
-      `SELECT id FROM vehicles WHERE id = ? LIMIT 1 FOR UPDATE`,
+      `SELECT * FROM vehicles WHERE id = ? LIMIT 1 FOR UPDATE`,
       [vehId]
     );
     if (!exists) {
@@ -370,6 +399,15 @@ router.delete('/:id', requireRole('admin','operator_admin'), async (req, res) =>
     await conn.query(`DELETE FROM vehicles WHERE id = ?`, [vehId]);
 
     await conn.commit();
+    await writeAudit({
+      actorId: req.user?.id,
+      entity: 'vehicle',
+      entityId: vehId,
+      action: 'vehicle.delete',
+      note: 'Vehicul șters',
+      before: exists,
+    });
+
     return res.json({ ok: true });
   } catch (err) {
     await conn.rollback();

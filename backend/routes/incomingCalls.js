@@ -9,6 +9,7 @@ let sequence = 0;
 let secretWarningLogged = false;
 const MAX_HISTORY = 500;
 const callHistory = [];
+let historyLoaded = false;
 
 const STATUS_LABELS = new Set(['ringing', 'answered', 'missed', 'rejected']);
 
@@ -64,13 +65,63 @@ function cleanupListener(listener) {
 }
 
 function storeInHistory(entry) {
+  const existingIdx = callHistory.findIndex((item) => item.id === entry.id);
+  if (existingIdx !== -1) {
+    callHistory.splice(existingIdx, 1);
+  }
   callHistory.unshift(entry);
   if (callHistory.length > MAX_HISTORY) {
     callHistory.pop();
   }
 }
 
-router.post('/', (req, res) => {
+async function ensureHistoryLoaded() {
+  if (historyLoaded) return;
+  historyLoaded = true;
+  try {
+    const { rows } = await db.query(
+      `SELECT id, phone, digits, extension, source, status, note, caller_name, person_id, received_at
+         FROM incoming_calls
+        ORDER BY id DESC
+        LIMIT ?`,
+      [MAX_HISTORY],
+    );
+
+    callHistory.length = 0;
+
+    for (const row of rows || []) {
+      const normalized = {
+        id: String(row.id),
+        phone: row.phone,
+        digits: row.digits,
+        received_at: row.received_at ? new Date(row.received_at).toISOString() : null,
+        extension: row.extension,
+        source: row.source,
+        status: normalizeStatus(row.status),
+        note: row.note,
+        meta: {
+          callerName: row.caller_name || null,
+          personId: row.person_id ?? null,
+        },
+      };
+
+      storeInHistory(normalized);
+      const numericId = Number(row.id);
+      if (Number.isFinite(numericId)) {
+        sequence = Math.max(sequence, numericId);
+      }
+    }
+
+    if (callHistory.length) {
+      lastCall = callHistory[0];
+    }
+  } catch (err) {
+    historyLoaded = false;
+    console.error('[incoming-calls] Nu am putut încărca istoricul din DB:', err);
+  }
+}
+
+router.post('/', async (req, res) => {
   const expectedSecret = process.env.PBX_WEBHOOK_SECRET;
   const providedSecret = req.get('x-pbx-secret') || req.body?.secret || req.query?.secret;
 
@@ -92,24 +143,52 @@ router.post('/', (req, res) => {
   const extension = req.body?.extension != null ? String(req.body.extension).trim() : null;
   const source = req.body?.source != null ? String(req.body.source).trim() : null;
 
-  const event = {
-    id: String(++sequence),
+  const receivedAt = new Date();
+  const status = normalizeStatus(req.body?.status);
+  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : null;
+  const callerName = typeof req.body?.name === 'string' ? req.body.name.trim() || null : null;
+  const personId = req.body?.person_id ?? null;
+
+  let insertedId = null;
+  try {
+    const insertRes = await db.query(
+      `INSERT INTO incoming_calls
+        (phone, digits, extension, source, status, note, caller_name, person_id, received_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        display || digits,
+        digits || null,
+        extension || null,
+        source || null,
+        status,
+        note || null,
+        callerName,
+        personId,
+        receivedAt,
+      ],
+    );
+    insertedId = insertRes.insertId;
+    const numericId = Number(insertedId);
+    if (Number.isFinite(numericId)) {
+      sequence = Math.max(sequence, numericId);
+    }
+  } catch (err) {
+    console.error('[incoming-calls] Nu am putut salva în DB:', err);
+  }
+
+  const eventId = insertedId != null ? insertedId : ++sequence;
+  const entry = {
+    id: String(eventId),
     phone: display || digits,
     digits,
     extension: extension || null,
     source: source || null,
-    received_at: new Date().toISOString(),
-  };
-
-  const status = normalizeStatus(req.body?.status);
-  const note = typeof req.body?.note === 'string' ? req.body.note.trim() : null;
-  const entry = {
-    ...event,
+    received_at: receivedAt.toISOString(),
     status,
     note: note || null,
     meta: {
-      callerName: typeof req.body?.name === 'string' ? req.body.name.trim() || null : null,
-      personId: req.body?.person_id ?? null,
+      callerName,
+      personId,
     },
   };
 
@@ -120,10 +199,12 @@ router.post('/', (req, res) => {
   return res.json({ success: true });
 });
 
-router.get('/stream', (req, res) => {
+router.get('/stream', async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ error: 'auth required' });
   }
+
+  await ensureHistoryLoaded();
 
   res.set({
     'Content-Type': 'text/event-stream',
@@ -158,10 +239,11 @@ router.get('/stream', (req, res) => {
   }
 });
 
-router.get('/last', (req, res) => {
+router.get('/last', async (req, res) => {
   if (!req.user) {
     return res.status(401).json({ error: 'auth required' });
   }
+  await ensureHistoryLoaded();
   res.json({ call: lastCall });
 });
 
@@ -170,48 +252,43 @@ router.get('/log', async (req, res) => {
     return res.status(401).json({ error: 'auth required' });
   }
 
+  await ensureHistoryLoaded();
+
   const limit = Math.max(1, Math.min(Number.parseInt(req.query?.limit, 10) || 100, MAX_HISTORY));
-  const slice = callHistory.slice(0, limit);
-  const digits = Array.from(new Set(slice.map((entry) => entry.digits).filter(Boolean)));
 
-  let peopleByPhone = {};
-  if (digits.length) {
-    try {
-      const placeholders = digits.map(() => '?').join(',');
-      const rowsRes = await db.query(
-        `SELECT id, name, phone FROM people WHERE phone IN (${placeholders})`,
-        digits,
-      );
-      for (const row of rowsRes.rows || []) {
-        if (!row) continue;
-        const key = row.phone ? String(row.phone).trim() : null;
-        if (!key || key === '') continue;
-        if (Object.prototype.hasOwnProperty.call(peopleByPhone, key)) continue;
-        peopleByPhone[key] = {
-          id: row.id,
-          name: row.name,
-        };
-      }
-    } catch (err) {
-      console.error('[incoming-calls] Nu am putut încărca numele persoanelor:', err);
-    }
-  }
+  const { rows } = await db.query(
+    `SELECT
+        ic.id,
+        ic.phone,
+        ic.digits,
+        ic.received_at,
+        ic.extension,
+        ic.source,
+        ic.status,
+        ic.note,
+        ic.caller_name,
+        ic.person_id,
+        p.id AS matched_person_id,
+        p.name AS matched_person_name
+      FROM incoming_calls ic
+      LEFT JOIN people p ON ic.digits IS NOT NULL AND p.phone = ic.digits
+      ORDER BY ic.id DESC
+      LIMIT ?`,
+    [limit],
+  );
 
-  const entries = slice.map((entry) => {
-    const person = entry.digits ? peopleByPhone[entry.digits] : null;
-    return {
-      id: entry.id,
-      phone: entry.phone,
-      digits: entry.digits,
-      received_at: entry.received_at,
-      extension: entry.extension,
-      source: entry.source,
-      status: entry.status,
-      note: entry.note,
-      caller_name: entry.meta?.callerName || person?.name || null,
-      person_id: entry.meta?.personId || person?.id || null,
-    };
-  });
+  const entries = (rows || []).map((row) => ({
+    id: String(row.id),
+    phone: row.phone || row.digits || '',
+    digits: row.digits,
+    received_at: row.received_at ? new Date(row.received_at).toISOString() : null,
+    extension: row.extension,
+    source: row.source,
+    status: normalizeStatus(row.status),
+    note: row.note,
+    caller_name: row.caller_name || row.matched_person_name || null,
+    person_id: row.person_id || row.matched_person_id || null,
+  }));
 
   res.json({ entries });
 });
