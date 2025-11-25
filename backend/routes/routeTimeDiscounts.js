@@ -71,6 +71,20 @@ router.get('/routes/:routeId/discounts', requireRole('admin','operator_admin','a
   const scheduleId = req.query.route_schedule_id ? Number(req.query.route_schedule_id) : null;
   const time = req.query.time ? normalizeTime(req.query.time) : null;
   const direction = req.query.direction ? normalizeDirection(req.query.direction) : null;
+  const channel = typeof req.query.channel === 'string' ? req.query.channel.toLowerCase() : null;
+
+  let visibilityColumn = 'visible_agents';
+  if (channel === 'online') {
+    visibilityColumn = 'visible_online';
+  } else if (channel === 'driver' || req.user?.role === 'driver') {
+    visibilityColumn = 'visible_driver';
+  }
+
+  const validityClause = `(
+    dt.date_limited = 0 OR dt.date_limited IS NULL
+    OR ((dt.valid_from IS NULL OR dt.valid_from <= CURDATE())
+      AND (dt.valid_to IS NULL OR dt.valid_to >= CURDATE()))
+  )`;
 
   try {
     const schedule = await resolveScheduleId(routeId, { scheduleId, time, direction });
@@ -85,11 +99,17 @@ router.get('/routes/:routeId/discounts', requireRole('admin','operator_admin','a
         dt.code,
         dt.label,
         dt.value_off AS discount_value,
-        dt.type      AS discount_type
+        dt.type      AS discount_type,
+        dt.description_required,
+        dt.description_label,
+        dt.date_limited,
+        dt.valid_from,
+        dt.valid_to
       FROM route_schedule_discounts rsd
       JOIN discount_types dt ON dt.id = rsd.discount_type_id
       WHERE rsd.route_schedule_id = ?
-        AND rsd.visible_agents = 1
+        AND rsd.${visibilityColumn} = 1
+        AND ${validityClause}
       ORDER BY dt.label
       `,
       [schedule.id]
@@ -134,8 +154,8 @@ router.put('/routes/:routeId/discounts', requireRole('admin','operator_admin'), 
 
     for (const dtId of discountTypeIds) {
       await conn.execute(
-        `INSERT IGNORE INTO route_schedule_discounts (route_schedule_id, discount_type_id, visible_agents, visible_online)
-         VALUES (?, ?, 1, 0)`,
+        `INSERT IGNORE INTO route_schedule_discounts (route_schedule_id, discount_type_id, visible_agents, visible_online, visible_driver)
+         VALUES (?, ?, 1, 0, 0)`,
         [schedule.id, dtId]
       );
     }

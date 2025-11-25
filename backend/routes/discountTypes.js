@@ -25,7 +25,9 @@ router.use((req, _res, next) => {
 router.get('/', async (_req, res) => {
   try {
     const result = await db.query(
-      'SELECT id, code, label, value_off, type FROM discount_types ORDER BY label'
+      `SELECT id, code, label, value_off, type, description_required, description_label, date_limited, valid_from, valid_to
+         FROM discount_types
+        ORDER BY label`
     );
     res.json(result.rows);
   } catch (err) {
@@ -38,7 +40,7 @@ router.get('/', async (_req, res) => {
 router.get('/schedules/all', async (_req, res) => {
   try {
     const result = await db.query(`
-      SELECT rs.id, r.name AS route_name, rs.departure, rs.direction
+      SELECT rs.id, rs.route_id, r.name AS route_name, rs.departure, rs.direction
       FROM route_schedules rs
       JOIN routes r ON r.id = rs.route_id
       ORDER BY r.name, rs.departure
@@ -56,7 +58,7 @@ router.get('/:discountId/schedules', async (req, res) => {
   try {
     const result = await db.query(
       `
-      SELECT route_schedule_id, visible_agents, visible_online
+      SELECT route_schedule_id, visible_agents, visible_online, visible_driver
         FROM route_schedule_discounts
        WHERE discount_type_id = ?
       `,
@@ -66,7 +68,8 @@ router.get('/:discountId/schedules', async (req, res) => {
     const payload = result.rows.map(row => ({
       route_schedule_id: Number(row.route_schedule_id),
       visible_agents: Number(row.visible_agents) === 1,
-      visible_online: Number(row.visible_online) === 1
+      visible_online: Number(row.visible_online) === 1,
+      visible_driver: Number(row.visible_driver) === 1,
     }));
 
     res.json(payload);
@@ -90,17 +93,19 @@ router.put('/:discountId/schedules', async (req, res) => {
       if (!Number.isFinite(schedId) || schedId <= 0) continue;
       const visibleAgents = entry.visibleAgents ?? entry.visible_agents ?? entry.agents ?? entry.apply ?? false;
       const visibleOnline = entry.visibleOnline ?? entry.visible_online ?? entry.online ?? false;
+      const visibleDriver = entry.visibleDriver ?? entry.visible_driver ?? entry.driver ?? false;
       normalized.push({
         id: schedId,
         agents: !!visibleAgents,
-        online: !!visibleOnline
+        online: !!visibleOnline,
+        driver: !!visibleDriver
       });
     }
   } else if (Array.isArray(scheduleIds)) {
     for (const rawId of scheduleIds) {
       const schedId = Number(rawId);
       if (!Number.isFinite(schedId) || schedId <= 0) continue;
-      normalized.push({ id: schedId, agents: true, online: false });
+      normalized.push({ id: schedId, agents: true, online: false, driver: false });
     }
   }
 
@@ -114,14 +119,14 @@ router.put('/:discountId/schedules', async (req, res) => {
     );
 
     for (const entry of normalized) {
-      if (!entry.agents && !entry.online) continue;
+      if (!entry.agents && !entry.online && !entry.driver) continue;
       await conn.execute(
         `
         INSERT INTO route_schedule_discounts
-          (discount_type_id, route_schedule_id, visible_agents, visible_online)
-        VALUES (?, ?, ?, ?)
+          (discount_type_id, route_schedule_id, visible_agents, visible_online, visible_driver)
+        VALUES (?, ?, ?, ?, ?)
         `,
-        [discountId, entry.id, entry.agents ? 1 : 0, entry.online ? 1 : 0]
+        [discountId, entry.id, entry.agents ? 1 : 0, entry.online ? 1 : 0, entry.driver ? 1 : 0]
       );
     }
 
@@ -138,11 +143,22 @@ router.put('/:discountId/schedules', async (req, res) => {
 
 // 5️⃣ POST — adaugă un discount nou
 router.post('/', async (req, res) => {
-  const { code, label, value_off, type } = req.body;
+  const { code, label, value_off, type, description_required, description_label, date_limited, valid_from, valid_to } = req.body;
   try {
     const result = await db.query(
-      'INSERT INTO discount_types (code, label, value_off, type) VALUES (?, ?, ?, ?)',
-      [code, label, value_off, type]
+      `INSERT INTO discount_types (code, label, value_off, type, description_required, description_label, date_limited, valid_from, valid_to)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        code,
+        label,
+        value_off,
+        type,
+        description_required ? 1 : 0,
+        description_label || null,
+        date_limited ? 1 : 0,
+        date_limited ? valid_from || null : null,
+        date_limited ? valid_to || null : null,
+      ]
     );
 
     // Extragem înregistrarea nouă
@@ -161,12 +177,25 @@ router.post('/', async (req, res) => {
 // 6️⃣ PUT — actualizează un discount existent
 router.put('/:id', async (req, res) => {
   const { id } = req.params;
-  const { code, label, value_off, type } = req.body;
+  const { code, label, value_off, type, description_required, description_label, date_limited, valid_from, valid_to } = req.body;
 
   try {
     const result = await db.query(
-      'UPDATE discount_types SET code=?, label=?, value_off=?, type=? WHERE id=?',
-      [code, label, value_off, type, id]
+      `UPDATE discount_types
+          SET code=?, label=?, value_off=?, type=?, description_required=?, description_label=?, date_limited=?, valid_from=?, valid_to=?
+        WHERE id=?`,
+      [
+        code,
+        label,
+        value_off,
+        type,
+        description_required ? 1 : 0,
+        description_label || null,
+        date_limited ? 1 : 0,
+        date_limited ? valid_from || null : null,
+        date_limited ? valid_to || null : null,
+        id,
+      ]
     );
 
     if (result.rowCount === 0) {

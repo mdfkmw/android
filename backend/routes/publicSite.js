@@ -137,19 +137,30 @@ function mapDiscountRow(row) {
     label: row.label || '',
     value_off: Number(row.value_off),
     type: row.type,
+    description_required: Boolean(row.description_required),
+    description_label: row.description_label || null,
+    date_limited: Boolean(row.date_limited),
+    valid_from: row.valid_from || null,
+    valid_to: row.valid_to || null,
   };
 }
+
+const VALID_DISCOUNT_SQL = `(
+  dt.date_limited = 0 OR dt.date_limited IS NULL
+  OR ((dt.valid_from IS NULL OR dt.valid_from <= CURDATE()) AND (dt.valid_to IS NULL OR dt.valid_to >= CURDATE()))
+)`;
 
 async function fetchOnlineDiscountTypes(client, scheduleId) {
   if (!Number.isFinite(scheduleId) || !scheduleId) return [];
   const { rows } = await execQuery(
     client,
     `
-    SELECT dt.id, dt.code, dt.label, dt.value_off, dt.type
+    SELECT dt.id, dt.code, dt.label, dt.value_off, dt.type, dt.description_required, dt.description_label, dt.date_limited, dt.valid_from, dt.valid_to
       FROM route_schedule_discounts rsd
       JOIN discount_types dt ON dt.id = rsd.discount_type_id
      WHERE rsd.route_schedule_id = ?
        AND rsd.visible_online = 1
+       AND ${VALID_DISCOUNT_SQL}
      ORDER BY dt.label
     `,
     [scheduleId]
@@ -164,12 +175,13 @@ async function resolveOnlineDiscountType(client, scheduleId, discountTypeId) {
   const { rows } = await execQuery(
     client,
     `
-    SELECT dt.id, dt.code, dt.label, dt.value_off, dt.type
+    SELECT dt.id, dt.code, dt.label, dt.value_off, dt.type, dt.description_required, dt.description_label, dt.date_limited, dt.valid_from, dt.valid_to
       FROM route_schedule_discounts rsd
       JOIN discount_types dt ON dt.id = rsd.discount_type_id
      WHERE rsd.route_schedule_id = ?
        AND rsd.discount_type_id = ?
        AND rsd.visible_online = 1
+       AND ${VALID_DISCOUNT_SQL}
      LIMIT 1
     `,
     [scheduleId, discountTypeId]
@@ -190,12 +202,13 @@ async function resolveMultipleOnlineDiscountTypes(client, scheduleId, discountTy
   const { rows } = await execQuery(
     client,
     `
-    SELECT dt.id, dt.code, dt.label, dt.value_off, dt.type
+    SELECT dt.id, dt.code, dt.label, dt.value_off, dt.type, dt.description_required, dt.description_label, dt.date_limited, dt.valid_from, dt.valid_to
       FROM route_schedule_discounts rsd
       JOIN discount_types dt ON dt.id = rsd.discount_type_id
      WHERE rsd.route_schedule_id = ?
        AND rsd.discount_type_id IN (${placeholders})
        AND rsd.visible_online = 1
+       AND ${VALID_DISCOUNT_SQL}
     `,
     params,
   );
