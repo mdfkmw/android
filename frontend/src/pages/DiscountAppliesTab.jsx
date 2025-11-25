@@ -8,9 +8,6 @@ export default function DiscountAppliesTab({ activeDiscountId: controlledDiscoun
   const [discountAssignments, setDiscountAssignments] = useState(new Map());
   const [loadingDiscount, setLoadingDiscount] = useState(false);
   const [savingDiscount, setSavingDiscount] = useState(false);
-  const [pricingCategories, setPricingCategories] = useState([]);
-  const [selCategory, setSelCategory] = useState('');
-  const [catChecked, setCatChecked] = useState(new Set());
   const [routeFilter, setRouteFilter] = useState('');
 
   const setActiveDiscountId = onActiveChange ?? setInternalActiveDiscountId;
@@ -22,13 +19,6 @@ export default function DiscountAppliesTab({ activeDiscountId: controlledDiscoun
   useEffect(() => {
     axios.get('/api/discount-types').then((r) => setDiscounts(r.data));
     axios.get('/api/discount-types/schedules/all').then(r => setSchedules(r.data));
-    axios
-      .get('/api/pricing-categories')
-      .then(r => {
-        const data = Array.isArray(r.data) ? r.data : [];
-        setPricingCategories(data);
-      })
-      .catch(() => setPricingCategories([]));
   }, []);
 
   useEffect(() => {
@@ -120,17 +110,6 @@ export default function DiscountAppliesTab({ activeDiscountId: controlledDiscoun
       cancelled = true;
     };
   }, [activeDiscountId, discountAssignments]);
-
-  useEffect(() => {
-    if (!selCategory) {
-      setCatChecked(new Set());
-      return;
-    }
-    axios
-      .get(`/api/pricing-categories/${selCategory}/schedules`)
-      .then(r => setCatChecked(new Set(r.data)))
-      .catch(() => setCatChecked(new Set()));
-  }, [selCategory]);
 
   const activeEntry = activeDiscountId ? discountAssignments.get(activeDiscountId) : null;
   const activeAgents = activeEntry?.agents ?? new Set();
@@ -244,21 +223,6 @@ export default function DiscountAppliesTab({ activeDiscountId: controlledDiscoun
     } finally {
       setSavingDiscount(false);
     }
-  }
-
-  function toggleCategory(id) {
-    setCatChecked(prev => {
-      const next = new Set(prev);
-      next.has(id) ? next.delete(id) : next.add(id);
-      return next;
-    });
-  }
-
-  function saveCategories() {
-    axios
-      .put(`/api/pricing-categories/${selCategory}/schedules`, { scheduleIds: Array.from(catChecked) })
-      .then(() => alert('Salvat!'))
-      .catch(() => alert('Eroare la salvare'));
   }
 
   // sort handler
@@ -443,81 +407,6 @@ export default function DiscountAppliesTab({ activeDiscountId: controlledDiscoun
         </div>
       </section>
 
-      <section>
-        <h3 className="text-base font-semibold mb-2">Categorii de preț</h3>
-        <div className="mb-4">
-          <select
-            className="p-2 text-sm border rounded"
-            value={selCategory}
-            onChange={e => setSelCategory(e.target.value)}
-          >
-            <option value="">Alege categorie…</option>
-            {pricingCategories.map(c => (
-              <option key={c.id} value={c.id}>
-                {c.name}
-              </option>
-            ))}
-          </select>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-auto text-sm table-auto border-collapse">
-            <thead>
-              <tr>
-                <th
-                  onClick={() => requestSort('route_name')}
-                  className="p-1 border text-left cursor-pointer select-none bg-gray-200"
-                >
-                  Traseu {sortConfig.key === 'route_name' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th
-                  onClick={() => requestSort('departure')}
-                  className="p-1 border text-left cursor-pointer select-none bg-gray-200"
-                >
-                  Ora {sortConfig.key === 'departure' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th
-                  onClick={() => requestSort('direction')}
-                  className="p-1 border text-left cursor-pointer select-none bg-gray-200"
-                >
-                  Direcție {sortConfig.key === 'direction' ? (sortConfig.direction === 'asc' ? '▲' : '▼') : ''}
-                </th>
-                <th className="p-1 border text-left bg-gray-200">Disponibil</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filteredSchedules.map((s, idx) => (
-                <tr
-                  key={s.id}
-                  className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}
-                >
-                  <td className="p-1 border">{s.route_name}</td>
-                  <td className="p-1 border">{s.departure}</td>
-                  <td className="p-1 border">{s.direction}</td>
-                  <td className="p-1 border text-center">
-                    <input
-                      type="checkbox"
-                      checked={catChecked.has(s.id)}
-                      onChange={() => toggleCategory(s.id)}
-                      disabled={!selCategory}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="text-left mt-4">
-          <button
-            className="px-3 py-1 text-sm bg-green-600 text-white rounded"
-            disabled={!selCategory}
-            onClick={saveCategories}
-          >
-            Salvează
-          </button>
-        </div>
-      </section>
     </div>
   );
 }
