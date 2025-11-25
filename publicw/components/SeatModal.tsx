@@ -157,10 +157,13 @@ export default function SeatModal({ isOpen, onClose, onConfirm, trip, travelDate
       setSeatData(data)
       setActiveVehicle((prev) => {
         if (!data?.vehicles?.length) return null
+        const fallback = data.vehicles.find((veh) => !veh.boarding_started)?.vehicle_id
+          ?? data.vehicles[0]?.vehicle_id
+          ?? null
         if (prev && data.vehicles.some((veh) => veh.vehicle_id === prev)) {
           return prev
         }
-        return data.vehicles[0]?.vehicle_id ?? null
+        return fallback
       })
     } catch (err: any) {
       if (showSpinner) {
@@ -787,6 +790,11 @@ export default function SeatModal({ isOpen, onClose, onConfirm, trip, travelDate
                 {seatFeedback}
               </div>
             )}
+            {currentVehicle?.boarding_started && !loading && !error && (
+              <div className="rounded-xl bg-amber-500/15 px-4 py-2 text-sm text-amber-100">
+                Îmbarcarea a început pentru acest vehicul. Dacă există alt vehicul, îl poți selecta din lista de mai sus.
+              </div>
+            )}
 
             {!loading && !error && currentVehicle && (
               <div className="space-y-4">
@@ -799,8 +807,10 @@ export default function SeatModal({ isOpen, onClose, onConfirm, trip, travelDate
                           key={veh.vehicle_id}
                           onClick={() => setActiveVehicle(veh.vehicle_id)}
                           className={`${VEHICLE_TAB_CLASS} ${active ? 'bg-brand text-white' : 'bg-white/10 text-white/70 hover:bg-white/20'}`}
+                          title={veh.boarding_started ? 'Îmbarcarea a început pentru acest vehicul' : undefined}
                         >
                           {veh.vehicle_name}
+                          {veh.boarding_started ? ' · Îmbarcare' : ''}
                           {veh.is_primary ? ' · Principal' : ''}
                         </button>
                       )
