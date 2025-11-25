@@ -623,6 +623,8 @@ export default function ReservationPage({ userRole, user }) {
   const [notesVisibility, setNotesVisibility] = useState({});
   // ⚙️ Control pentru dimensiunile locurilor în modul lat
   const [wideSeatSize, setWideSeatSize] = useState({ width: 260, height: 150 });
+  // 🔠 Control pentru dimensiunea fontului din locuri (în modul lat)
+  const [wideSeatFontScale, setWideSeatFontScale] = useState(1);
   // 📝 Afișare observații direct pe diagramă
   const [showSeatObservations, setShowSeatObservations] = useState(false);
   // 🚐 Control pentru afișarea popup-ului de alegere vehicul
@@ -666,6 +668,13 @@ export default function ReservationPage({ userRole, user }) {
     });
   }, []);
 
+  const adjustWideSeatFontScale = useCallback((delta) => {
+    setWideSeatFontScale((prev) => {
+      const next = Math.min(1.6, Math.max(0.6, Number((prev + delta).toFixed(2))));
+      return next;
+    });
+  }, []);
+
   const [popupPassenger, setPopupPassenger] = useState(null);
   const [popupSeat, setPopupSeat] = useState(null);
   const [popupPosition, setPopupPosition] = useState(null);
@@ -689,7 +698,9 @@ export default function ReservationPage({ userRole, user }) {
     const seatHeight = isWideView ? wideSeatSize.height : 100;
     const seatGap = 5;
     const padding = 24;
-    const seatPadding = 10;
+    const fontScale = isWideView ? wideSeatFontScale : 1;
+    const scaleValue = (value) => Math.round(value * fontScale);
+    const seatPadding = Math.max(8, scaleValue(10));
     const maxCol = Math.max(...seats.map((s) => s.seat_col || 1));
     const maxRow = Math.max(...seats.map((s) => s.row || 0));
     const dateLabel = selectedDate ? format(selectedDate, 'dd.MM.yyyy') : '';
@@ -717,7 +728,7 @@ export default function ReservationPage({ userRole, user }) {
 
     if (headerText) {
       ctx.fillStyle = '#111827';
-      ctx.font = '600 20px "Inter", sans-serif';
+      ctx.font = `600 ${scaleValue(20)}px "Inter", sans-serif`;
       ctx.fillText(headerText, padding, padding / 2);
     }
 
@@ -813,13 +824,13 @@ export default function ReservationPage({ userRole, user }) {
       const seatDisplayLabel = isDriverSeat && driverName ? driverName : seat.label;
       const driverSubtitle = isDriverSeat && driverName ? 'Șofer' : null;
       let textY = y + seatPadding;
-      const writeLine = (text, font = '12px "Inter", sans-serif') => {
+      const writeLine = (text, font = `${scaleValue(12)}px "Inter", sans-serif`) => {
         if (!text) return;
         const value = clampText(String(text), font);
         ctx.font = font;
         ctx.fillStyle = '#ffffff';
         ctx.fillText(value, x + seatPadding, textY);
-        textY += 16;
+        textY += scaleValue(16);
       };
 
       const writeObservation = (text) => {
@@ -827,26 +838,26 @@ export default function ReservationPage({ userRole, user }) {
         const lines = String(text).split(/\r?\n/);
         lines.forEach((line, idx) => {
           const prefix = idx === 0 ? '📝 ' : '   ';
-          writeLine(`${prefix}${line}`, 'italic 10px "Inter", sans-serif');
+          writeLine(`${prefix}${line}`, `italic ${scaleValue(10)}px "Inter", sans-serif`);
         });
       };
 
-      writeLine(seatDisplayLabel, '600 14px "Inter", sans-serif');
+      writeLine(seatDisplayLabel, `600 ${scaleValue(14)}px "Inter", sans-serif`);
       if (driverSubtitle) {
-        writeLine(driverSubtitle, '600 12px "Inter", sans-serif');
+        writeLine(driverSubtitle, `600 ${scaleValue(12)}px "Inter", sans-serif`);
       }
       if (primaryPassenger) {
-        writeLine(primaryPassenger.name || '(fără nume)', '600 13px "Inter", sans-serif');
-        writeLine(primaryPassenger.phone, '12px "Inter", sans-serif');
-        writeLine(`${primaryPassenger.board_at} → ${primaryPassenger.exit_at}`, '12px "Inter", sans-serif');
+        writeLine(primaryPassenger.name || '(fără nume)', `600 ${scaleValue(13)}px "Inter", sans-serif`);
+        writeLine(primaryPassenger.phone, `${scaleValue(12)}px "Inter", sans-serif`);
+        writeLine(`${primaryPassenger.board_at} → ${primaryPassenger.exit_at}`, `${scaleValue(12)}px "Inter", sans-serif`);
         writeObservation(primaryPassenger.observations);
       }
 
       if (activePassengers.length > 1) {
-        textY += 4;
+        textY += scaleValue(4);
         activePassengers.slice(1).forEach((passenger) => {
-          writeLine(passenger.name, '600 12px "Inter", sans-serif');
-          writeLine(passenger.phone, '12px "Inter", sans-serif');
+          writeLine(passenger.name, `600 ${scaleValue(12)}px "Inter", sans-serif`);
+          writeLine(passenger.phone, `${scaleValue(12)}px "Inter", sans-serif`);
           writeObservation(passenger.observations);
         });
       }
@@ -855,13 +866,13 @@ export default function ReservationPage({ userRole, user }) {
       const paymentMethod = paidPassenger?.payment_method || primaryPassenger?.payment_method;
       if (paymentMethod) {
         const methodLabel = paymentMethod === 'cash' ? '💵 Cash' : paymentMethod === 'card' ? '💳 Card' : '📝 Rezervare';
-        ctx.font = '600 11px "Inter", sans-serif';
-        const badgeWidth = ctx.measureText(methodLabel).width + 16;
-        const badgeHeight = 20;
+        ctx.font = `600 ${scaleValue(11)}px "Inter", sans-serif`;
+        const badgeWidth = ctx.measureText(methodLabel).width + scaleValue(16);
+        const badgeHeight = scaleValue(20);
         const badgeX = x + seatWidth - badgeWidth - seatPadding;
         const badgeY = y + seatHeight - badgeHeight - seatPadding;
         const badgeColor = paymentMethod === 'cash' ? '#eab308' : paymentMethod === 'card' ? '#7c3aed' : '#6b7280';
-        drawRoundedRect(ctx, badgeX, badgeY, badgeWidth, badgeHeight, 10);
+        drawRoundedRect(ctx, badgeX, badgeY, badgeWidth, badgeHeight, scaleValue(10));
         ctx.fillStyle = badgeColor;
         ctx.fill();
         ctx.fillStyle = '#ffffff';
@@ -876,7 +887,7 @@ export default function ReservationPage({ userRole, user }) {
         ctx.fillStyle = 'rgba(0,0,0,0.45)';
         ctx.fillRect(x, y, seatWidth, seatHeight);
         ctx.fillStyle = '#ffffff';
-        ctx.font = '600 12px "Inter", sans-serif';
+        ctx.font = `600 ${scaleValue(12)}px "Inter", sans-serif`;
         ctx.textAlign = 'center';
         ctx.fillText('Rezervare în curs', x + seatWidth / 2, y + seatHeight / 2 - 6);
         ctx.textAlign = 'left';
@@ -895,6 +906,7 @@ export default function ReservationPage({ userRole, user }) {
     selectedRoute?.name,
     selectedSeats,
     showSeatObservations,
+    wideSeatFontScale,
     wideSeatSize,
   ]);
 
@@ -4317,6 +4329,32 @@ export default function ReservationPage({ userRole, user }) {
                           </button>
                           <div />
                         </div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-[11px] font-semibold text-gray-700 uppercase tracking-wide">Dimensiune font</div>
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => adjustWideSeatFontScale(-0.05)}
+                              className="w-8 h-8 flex items-center justify-center rounded bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
+                              title="Micșorează textul din locuri"
+                              aria-label="Micșorează textul din locuri"
+                            >
+                              −
+                            </button>
+                            <div className="flex items-center justify-center text-[10px] font-semibold text-gray-700 bg-gray-100 rounded px-2 py-1 min-w-[52px] text-center">
+                              {Math.round(wideSeatFontScale * 100)}%
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => adjustWideSeatFontScale(0.05)}
+                              className="w-8 h-8 flex items-center justify-center rounded bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
+                              title="Mărește textul din locuri"
+                              aria-label="Mărește textul din locuri"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     )}
                     <div className={`overflow-auto ${isWideView ? (showWideSeatControls ? 'pt-20' : 'pt-12') : ''}`}>
@@ -4350,6 +4388,7 @@ export default function ReservationPage({ userRole, user }) {
                         isWideView={isWideView}
                         wideSeatSize={wideSeatSize}
                         showObservations={showSeatObservations}
+                        fontScale={isWideView ? wideSeatFontScale : 1}
                       />
                     </div>
                   </div>
