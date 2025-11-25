@@ -17,7 +17,7 @@ import androidx.room.RoomDatabase
         PriceListEntity::class,
         PriceListItemEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {

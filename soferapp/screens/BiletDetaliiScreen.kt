@@ -19,20 +19,37 @@ import ro.priscom.sofer.ui.models.DriverTicket
 fun BiletDetaliiScreen(
     destination: String,
     onBack: () -> Unit,
-    onIncasare: () -> Unit
+    onIncasare: () -> Unit,
+    currentStopName: String? = null,
+    ticketPrice: Double? = null
 ) {
+
+
     val activeGreen = Color(0xFF5BC21E)
     val purpleBg = Color(0xFFE3C6FF)
     val blueFinal = Color(0xFF007BFF)
 
-    var pretBrut by remember { mutableStateOf(33.0) }      // temporar, hardcodat
+// dacă avem preț din listele reale, îl folosim; altfel 0 intern
+    var pretBrut by remember(ticketPrice) { mutableStateOf(ticketPrice ?: 0.0) }
     var dusIntors by remember { mutableStateOf(false) }
     var quantity by remember { mutableStateOf(1) }
     var selectedDiscount by remember { mutableStateOf<DiscountOption?>(null) }
     var showReduceri by remember { mutableStateOf(false) }
 
-    val discountFactor = 1 - (selectedDiscount?.percent ?: 0.0) / 100.0
-    val finalPrice = pretBrut * quantity * (if (dusIntors) 2 else 1) * discountFactor
+// reducerea și totalul au sens doar dacă avem preț
+    val discountFactor = if (ticketPrice != null) {
+        1 - (selectedDiscount?.percent ?: 0.0) / 100.0
+    } else {
+        0.0
+    }
+    val finalPrice = if (ticketPrice != null) {
+        pretBrut * quantity * (if (dusIntors) 2 else 1) * discountFactor
+    } else {
+        0.0
+    }
+    val canIncasare = ticketPrice != null
+
+
 
     if (showReduceri) {
         ReduceriScreen(
@@ -58,14 +75,27 @@ fun BiletDetaliiScreen(
                 .padding(8.dp)
         ) {
             Text("CURSA: TUR 06:00 - TUR", fontSize = 14.sp)
-            Text("IMBARCARE: STATIE CURENTA", fontSize = 14.sp)
+            Text(
+                "IMBARCARE: ${currentStopName ?: "STATIE CURENTA"}",
+                fontSize = 14.sp
+            )
+
             Text("DEBARCARE: $destination", fontSize = 14.sp)
             Spacer(Modifier.height(4.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text("PRET BRUT: $pretBrut", fontSize = 16.sp)
+                Text(
+                    text = if (ticketPrice != null) {
+                        "PRET BRUT: %.2f".format(pretBrut)
+                    } else {
+                        "PRET BRUT: -"
+                    },
+                    fontSize = 16.sp
+                )
+
+
                 Spacer(Modifier.weight(1f))
                 Box(
                     modifier = Modifier
@@ -73,10 +103,16 @@ fun BiletDetaliiScreen(
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text(
-                        text = "FINAL %.2f".format(finalPrice),
+                        text = if (ticketPrice != null) {
+                            "FINAL %.2f".format(finalPrice)
+                        } else {
+                            "FINAL: -"
+                        },
                         fontSize = 16.sp,
                         color = Color.White
                     )
+
+
                 }
             }
 
@@ -175,6 +211,8 @@ fun BiletDetaliiScreen(
 
             Button(
                 onClick = {
+                    if (!canIncasare) return@Button  // prevenție totală
+
                     val ticket = DriverTicket(
                         destination = destination,
                         grossPrice = pretBrut,
@@ -185,12 +223,14 @@ fun BiletDetaliiScreen(
                     DriverLocalStore.addTicket(ticket)
                     onIncasare()
                 },
+                enabled = canIncasare,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = activeGreen
+                    containerColor = if (canIncasare) activeGreen else Color.Gray
                 )
             ) {
                 Text("INCAZARE")
             }
+
 
         }
     }

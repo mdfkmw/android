@@ -1,5 +1,14 @@
 package ro.priscom.sofer.ui.screens
 
+import android.Manifest
+import android.app.Activity
+import android.content.pm.PackageManager
+import android.location.Location
+import android.location.LocationListener
+import android.location.LocationManager
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -11,8 +20,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import ro.priscom.sofer.ui.components.StatusBar
 import ro.priscom.sofer.ui.models.Route
 import ro.priscom.sofer.ui.data.DriverLocalStore
@@ -32,7 +43,7 @@ fun MainTabsScreen(
 ) {
 
     val kasaStatus = "Casă: neconectată"
-    val gpsStatus = "GPS: OFF"
+    var gpsStatus by remember { mutableStateOf("GPS: OFF") }
     val netStatus = "Internet: offline"
     val batteryStatus = "Baterie: 75%"
 
@@ -44,18 +55,109 @@ fun MainTabsScreen(
     var currentRouteId by remember { mutableStateOf<Int?>(null) }
     var currentDirection by remember { mutableStateOf<String?>(null) }
 
+    // stația curentă (calculată din GPS + geofence)
+    var currentStopName by remember { mutableStateOf<String?>(null) }
+
     // stare persistentă între taburi: cursă pornită / îmbarcare pornită / selecție auto
     var tripStarted by remember { mutableStateOf(false) }
     var boardingStarted by remember { mutableStateOf(false) }
     var autoSelected by remember { mutableStateOf(false) }
+    var autoSelectedTouched by remember { mutableStateOf(false) }
     var currentTripId by remember { mutableStateOf<Int?>(null) }
 
 
+
     val context = LocalContext.current
+    val activity = context as? Activity
+
+    // ultima locație primită de la GPS
+    var currentLocation by remember { mutableStateOf<Location?>(null) }
+
+    // LocationManager pentru GPS
+    val locationManager = remember {
+        context.getSystemService(LocationManager::class.java)
+    }
 
     val repo = remember { LocalRepository(context) }
+
+
     val remoteRepo = remember { RemoteRepository() }
     var stationsList by remember { mutableStateOf(listOf<String>()) }
+
+    // cerem permisiunea de locație la prima pornire
+    LaunchedEffect(Unit) {
+        if (activity != null) {
+            val hasFine = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+            val hasCoarse = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!hasFine && !hasCoarse) {
+                ActivityCompat.requestPermissions(
+                    activity,
+                    arrayOf(
+                        Manifest.permission.ACCESS_FINE_LOCATION,
+                        Manifest.permission.ACCESS_COARSE_LOCATION
+                    ),
+                    1001
+                )
+            }
+        }
+    }
+
+    // ascultăm actualizările de locație
+    DisposableEffect(locationManager, activity) {
+        if (locationManager == null || activity == null) {
+            onDispose { }
+        } else {
+            val hasFine = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_FINE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+            val hasCoarse = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.ACCESS_COARSE_LOCATION
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!hasFine && !hasCoarse) {
+                gpsStatus = "GPS: fără permisiune"
+                onDispose { }
+            } else {
+                gpsStatus = "GPS: căutare sateliți…"
+
+                val listener = object : LocationListener {
+                    override fun onLocationChanged(location: Location) {
+                        currentLocation = location
+                        gpsStatus = "GPS: ON"
+                    }
+                }
+
+                try {
+                    locationManager.requestLocationUpdates(
+                        LocationManager.GPS_PROVIDER,
+                        5000L,   // la 5 secunde
+                        5f,      // la 5 metri
+                        listener
+                    )
+                } catch (e: SecurityException) {
+                    gpsStatus = "GPS: eroare permisiune"
+                }
+
+                onDispose {
+                    try {
+                        locationManager.removeUpdates(listener)
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+        }
+    }
 
 
     LaunchedEffect(currentRouteId, currentDirection) {
@@ -65,15 +167,45 @@ fun MainTabsScreen(
             val remoteStations = remote?.map { dto ->
                 StationEntity(
                     id = dto.station_id,
-                    name = dto.stationName ?: "Stația ${dto.station_id}"
+                    name = dto.stationName ?: "Stația ${dto.station_id}",
+                    latitude = null,
+                    longitude = null
                 )
             }
+
+
 
             remoteStations ?: repo.getStationsForRoute(routeId, currentDirection)
         } ?: repo.getAllStations()
 
         stationsList = stations.map { it.name }
     }
+
+    // când avem rută selectată și locație, calculăm stația curentă
+    LaunchedEffect(currentRouteId, currentDirection, currentLocation) {
+        val routeId = currentRouteId
+        val loc = currentLocation
+        if (routeId != null && loc != null) {
+            val name = repo.findCurrentStationNameForRoute(
+                routeId = routeId,
+                direction = currentDirection,
+                currentLat = loc.latitude,
+                currentLng = loc.longitude
+            )
+            currentStopName = name
+        } else {
+            currentStopName = null
+        }
+    }
+    // când primim pentru prima dată semnal GPS, bifăm automat "SELECȚIE AUTO"
+    LaunchedEffect(currentLocation) {
+        val hasGps = currentLocation != null
+        if (hasGps && !autoSelectedTouched) {
+            autoSelected = true
+        }
+    }
+
+
 
     Scaffold(
         topBar = {
@@ -143,17 +275,25 @@ fun MainTabsScreen(
 
 
                 1 -> OperatiiTabScreen(
-                    currentStopName = null, // deocamdată, nu avem stația curentă
+                    currentStopName = currentStopName,
                     stations = stationsList,
                     loggedIn = loggedIn,
                     tripStarted = tripStarted,
                     boardingStarted = boardingStarted,
                     autoSelected = autoSelected,
-                    onAutoSelectedChange = { autoSelected = it },
+                    gpsHasSignal = currentLocation != null,
+                    routeId = currentRouteId,
+                    repo = repo,
+                    onAutoSelectedChange = { checked ->
+                        autoSelectedTouched = true
+                        autoSelected = checked
+                    },
                     onStartBoarding = {
                         boardingStarted = true
                     }
                 )
+
+
 
 
             }
@@ -567,9 +707,13 @@ fun OperatiiTabScreen(
     tripStarted: Boolean,
     boardingStarted: Boolean,
     autoSelected: Boolean,
+    gpsHasSignal: Boolean,
+    routeId: Int?,
+    repo: LocalRepository,
     onAutoSelectedChange: (Boolean) -> Unit,
     onStartBoarding: () -> Unit
 ) {
+
 
     val activeGreen = Color(0xFF5BC21E)
     val inactiveGrey = Color(0xFFCCCCCC)
@@ -581,9 +725,28 @@ fun OperatiiTabScreen(
     var showTicketHistory by remember { mutableStateOf(false) }
     var showPassHistory by remember { mutableStateOf(false) }
 
+    val coroutineScope = rememberCoroutineScope()
+    var selectedDestinationPrice by remember { mutableStateOf<Double?>(null) }
 
-    // TODO: când legăm GPS real, înlocuim cu stare reală
-    val gpsHasSignal = false   // în demo: considerăm că NU există semnal GPS
+
+    // Stațiile disponibile ca destinație:
+    // - dacă avem stație curentă și e în listă,
+    //   arătăm doar stațiile DE DUPĂ ea (în ordinea rutei).
+    // - dacă nu avem stație curentă sau nu e găsită, arătăm toate stațiile.
+    val nextStations = remember(currentStopName, stations) {
+        if (currentStopName == null) {
+            stations
+        } else {
+            val idx = stations.indexOf(currentStopName)
+            if (idx >= 0 && idx < stations.lastIndex) {
+                stations.subList(idx + 1, stations.size)
+            } else {
+                // nu am găsit stația curentă în listă, sau e ultima
+                emptyList()
+            }
+        }
+    }
+
 
     // --- reguli de activare ---
 
@@ -627,19 +790,39 @@ fun OperatiiTabScreen(
                 onIncasare = {
                     selectedDestination = null
                     showDestinations = false
-                }
+                },
+                currentStopName = currentStopName,
+                ticketPrice = selectedDestinationPrice
             )
         }
+
 
         showDestinations -> {
             EmiteBiletScreen(
                 onBack = { showDestinations = false },
                 onDestinationSelected = { dest ->
                     selectedDestination = dest
+                    showDestinations = false
+
+                    // calculăm prețul real pentru segment (currentStopName → dest)
+                    if (routeId != null && currentStopName != null) {
+                        coroutineScope.launch {
+                            val price = repo.getPriceForSegmentByStationNames(
+                                routeId = routeId,
+                                fromStationName = currentStopName,
+                                toStationName = dest,
+                                categoryId = 1  // NORMAL
+                            )
+                            selectedDestinationPrice = price
+                        }
+                    } else {
+                        selectedDestinationPrice = null
+                    }
                 },
-                stations = stations
+                stations = nextStations
             )
         }
+
 
         else -> {
             // biletele emise local
@@ -842,9 +1025,13 @@ fun OperatiiTabScreen(
                             text = if (currentStopName != null)
                                 "Stația curentă: $currentStopName"
                             else
-                                "Stația curentă: (nesetată – va veni din GPS)",
-                            style = MaterialTheme.typography.titleMedium
+                                "Stația curentă: necunoscută",
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.Black,
+                            modifier = Modifier.padding(bottom = 4.dp)
                         )
+
 
                         Text(
                             text = "Persoane care COBORĂ: $persoaneCoboara",

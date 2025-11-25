@@ -63,7 +63,9 @@ data class RouteDto(
 
 data class StationDto(
     val id: Int,
-    val name: String
+    val name: String,
+    val latitude: Double?,
+    val longitude: Double?
 )
 
 data class RouteStationDto(

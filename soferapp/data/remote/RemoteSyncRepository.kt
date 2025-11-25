@@ -85,10 +85,13 @@ class RemoteSyncRepository {
                 stationsDto.map {
                     StationEntity(
                         id = it.id,
-                        name = it.name
+                        name = it.name,
+                        latitude = it.latitude,
+                        longitude = it.longitude
                     )
                 }
             )
+
 
             db.routeStationDao().insertAll(
                 routeStationsDto.map { rs ->
