@@ -54,7 +54,15 @@ export default function AgentChatPopup({ user }) {
   const [error, setError] = useState(null);
   const [isSending, setIsSending] = useState(false);
   const [hasUnread, setHasUnread] = useState(false);
-  const [lastReadId, setLastReadId] = useState(0);
+  const [lastReadId, setLastReadId] = useState(() => {
+    if (typeof window === 'undefined' || !user?.id) return 0;
+    try {
+      const saved = Number(window.localStorage.getItem(`agent-chat:last-read:${user.id}`) || '0');
+      return Number.isFinite(saved) && saved > 0 ? saved : 0;
+    } catch {
+      return 0;
+    }
+  });
   const pollingRef = useRef(null);
   const lastMessageIdRef = useRef(0);
   const chatBodyRef = useRef(null);
@@ -75,9 +83,23 @@ export default function AgentChatPopup({ user }) {
     if (!storageKey) return;
     try {
       const saved = Number(window.localStorage.getItem(storageKey) || '0');
-      if (Number.isFinite(saved) && saved > 0) setLastReadId(saved);
+      if (Number.isFinite(saved) && saved > 0) {
+        setLastReadId(saved);
+        if (lastMessageIdRef.current <= saved) {
+          setHasUnread(false);
+        }
+      } else {
+        setLastReadId(0);
+      }
     } catch { }
   }, [storageKey]);
+
+  useEffect(() => {
+    const latestId = lastMessageIdRef.current;
+    if (latestId && latestId <= lastReadId) {
+      setHasUnread(false);
+    }
+  }, [lastReadId]);
 
   const markAsRead = useCallback((latestId) => {
     if (!storageKey) return;

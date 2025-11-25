@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const db = require('../db');
 const { requireAuth, requireRole } = require('../middleware/auth');
+const { writeAudit } = require('./audit');
 // toți utilizatorii AUTENTIFICAȚI cu aceste roluri au voie aici
 router.use(requireAuth, requireRole('admin','operator_admin','agent'));
 /* ================================================================
@@ -132,7 +133,22 @@ router.post('/', async (req, res) => {
       [insertedId]
     );
 
-    res.json(rows[0]);
+    const created = rows?.[0];
+
+    await writeAudit({
+      actorId: req.user?.id,
+      entity: 'trip_vehicle',
+      entityId: insertedId,
+      action: normalizedPrimary ? 'trip.vehicle.primary.set' : 'trip.vehicle.duplicate.add',
+      relatedEntity: 'trip',
+      relatedId: trip_id,
+      note: normalizedPrimary
+        ? 'Vehicul principal setat pentru cursă'
+        : 'Dublură adăugată pentru cursă',
+      after: created || { trip_id, vehicle_id, is_primary: normalizedPrimary },
+    });
+
+    res.json(created);
   } catch (err) {
     await conn.rollback();
     conn.release();
@@ -155,7 +171,7 @@ router.patch('/:tvId', async (req, res) => {
     await conn.beginTransaction();
 
     const [tv] = await conn.execute(
-      `SELECT trip_id, vehicle_id FROM trip_vehicles WHERE id = ?`,
+      `SELECT trip_id, vehicle_id, is_primary, notes FROM trip_vehicles WHERE id = ?`,
       [tvId]
     );
     if (!tv.length) {
@@ -164,6 +180,7 @@ router.patch('/:tvId', async (req, res) => {
       return res.status(404).json({ error: 'trip_vehicle inexistent' });
     }
     const { trip_id } = tv[0];
+    const beforeTv = tv[0];
 
     if (is_primary !== undefined) {
       const flag = is_primary ? 1 : 0;
@@ -200,7 +217,21 @@ router.patch('/:tvId', async (req, res) => {
       [tvId]
     );
 
-    res.json(rows[0]);
+    const updated = rows?.[0];
+
+    await writeAudit({
+      actorId: req.user?.id,
+      entity: 'trip_vehicle',
+      entityId: tvId,
+      action: 'trip.vehicle.update',
+      relatedEntity: 'trip',
+      relatedId: trip_id,
+      note: 'Vehicul de cursă actualizat',
+      before: beforeTv,
+      after: updated,
+    });
+
+    res.json(updated);
   } catch (err) {
     await conn.rollback();
     conn.release();
@@ -261,6 +292,16 @@ router.delete('/:tvId', async (req, res) => {
 
     await conn.commit();
     conn.release();
+    await writeAudit({
+      actorId: req.user?.id,
+      entity: 'trip_vehicle',
+      entityId: tvId,
+      action: 'trip.vehicle.delete',
+      relatedEntity: 'trip',
+      relatedId: trip_id,
+      note: is_primary ? 'Vehicul principal eliminat din cursă' : 'Dublură eliminată din cursă',
+      before: tv?.[0] || null,
+    });
     res.json({ success: true });
   } catch (err) {
     await conn.rollback();
