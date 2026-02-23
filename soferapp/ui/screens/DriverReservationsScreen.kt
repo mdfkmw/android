@@ -29,6 +29,7 @@ private enum class ReservationsTab {
 @Composable
 fun DriverReservationsScreen(
     tripId: Int,
+    routeId: Int?,
     currentStopName: String?,
     routeScheduleId: Int?,
     repo: LocalRepository,
@@ -45,6 +46,7 @@ fun DriverReservationsScreen(
 
     var selectedTab by remember { mutableStateOf(ReservationsTab.URCARI_AICI) }
     var seatMapRefreshTrigger by remember { mutableStateOf(0) }
+    var hasSeatReservations by remember { mutableStateOf(false) }
 
     // când intrăm în ecran: citim rezervările din SQLite
     LaunchedEffect(tripId) {
@@ -60,6 +62,17 @@ fun DriverReservationsScreen(
     // determinăm stationId pentru stația curentă (din nume)
     LaunchedEffect(currentStopName) {
         currentStationId = currentStopName?.let { repo.getStationIdByName(it) }
+    }
+
+    LaunchedEffect(routeId) {
+        val routeEntity = routeId?.let { repo.getRouteById(it) }
+        hasSeatReservations =
+            (routeEntity?.visibleInReservations == true) ||
+                    (routeEntity?.visibleOnline == true)
+
+        if (!hasSeatReservations && selectedTab == ReservationsTab.HARTA) {
+            selectedTab = ReservationsTab.URCARI_AICI
+        }
     }
 
     // funcție helper: nume stație din id
@@ -306,11 +319,13 @@ fun DriverReservationsScreen(
                 onClick = { selectedTab = ReservationsTab.ISTORIC },
                 text = { Text("ISTORIC") }
             )
-            Tab(
-                selected = selectedTab == ReservationsTab.HARTA,
-                onClick = { selectedTab = ReservationsTab.HARTA },
-                text = { Text("HARTĂ") }
-            )
+            if (hasSeatReservations) {
+                Tab(
+                    selected = selectedTab == ReservationsTab.HARTA,
+                    onClick = { selectedTab = ReservationsTab.HARTA },
+                    text = { Text("HARTĂ") }
+                )
+            }
         }
 
         // conținut tab-uri – ocupă tot spațiul rămas
@@ -350,19 +365,28 @@ fun DriverReservationsScreen(
                     )
                 }
                 ReservationsTab.HARTA -> {
-                    SeatMapTab(
-                        tripId = tripId,
-                        currentStationId = currentStationId,
-                        routeScheduleId = routeScheduleId,
-                        repo = repo,
-                        refreshTrigger = seatMapRefreshTrigger,
-                        onSellTicket = { seatId, fromStationId, toStationId ->
-                            openSellFromSeatMap = SeatMapSell(seatId, fromStationId, toStationId)
-                        },
-                        onOpenReservationDetails = { res ->
-                            selectedReservation = res
+                    if (hasSeatReservations) {
+                        SeatMapTab(
+                            tripId = tripId,
+                            currentStationId = currentStationId,
+                            routeScheduleId = routeScheduleId,
+                            repo = repo,
+                            refreshTrigger = seatMapRefreshTrigger,
+                            onSellTicket = { seatId, fromStationId, toStationId ->
+                                openSellFromSeatMap = SeatMapSell(seatId, fromStationId, toStationId)
+                            },
+                            onOpenReservationDetails = { res ->
+                                selectedReservation = res
+                            }
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Harta locurilor este disponibilă doar la cursele cu rezervări.", color = Color.Gray)
                         }
-                    )
+                    }
                 }
 
             }
