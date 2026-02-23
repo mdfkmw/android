@@ -18,7 +18,7 @@ import kotlinx.coroutines.launch
 import ro.priscom.sofer.ui.data.DriverLocalStore
 import ro.priscom.sofer.ui.data.local.LocalRepository
 import ro.priscom.sofer.ui.data.local.ReservationEntity
-import ui.screens.SeatMapTab
+import ro.priscom.sofer.ui.screens.SeatMapTab
 private enum class ReservationsTab {
     URCARI_AICI,
     TOATE,

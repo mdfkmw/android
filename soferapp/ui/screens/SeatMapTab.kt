@@ -1,4 +1,4 @@
-package ui.screens
+package ro.priscom.sofer.ui.screens
 
 import android.util.Log
 import androidx.compose.foundation.background
