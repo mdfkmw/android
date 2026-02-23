@@ -29,7 +29,6 @@ private enum class ReservationsTab {
 @Composable
 fun DriverReservationsScreen(
     tripId: Int,
-    routeId: Int?,
     currentStopName: String?,
     routeScheduleId: Int?,
     repo: LocalRepository,
@@ -64,7 +63,8 @@ fun DriverReservationsScreen(
         currentStationId = currentStopName?.let { repo.getStationIdByName(it) }
     }
 
-    LaunchedEffect(routeId) {
+    LaunchedEffect(routeScheduleId) {
+        val routeId = repo.getRouteSchedule(routeScheduleId)?.routeId
         val routeEntity = routeId?.let { repo.getRouteById(it) }
         hasSeatReservations =
             (routeEntity?.visibleInReservations == true) ||

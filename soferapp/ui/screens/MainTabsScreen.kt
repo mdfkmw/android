@@ -1151,7 +1151,6 @@ fun OperatiiTabScreen(
         showReservations && tripId != null -> {
             DriverReservationsScreen(
                 tripId = tripId,
-                routeId = routeId,
                 currentStopName = currentStopName,
                 routeScheduleId = routeScheduleId,
                 repo = repo,
@@ -1462,7 +1461,6 @@ fun OperatiiTabScreen(
         }
     }
 }
-
 
 
 
