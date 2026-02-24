@@ -1301,8 +1301,15 @@ export default function ReservationPage({ userRole, user }) {
         }
 
         const imageUrl = canvas.toDataURL('image/png');
-        const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
+        const printWindow = window.open('', '_blank', 'width=1200,height=900');
         if (!printWindow) {
+          showToast('Popup blocat. Permite popup-urile pentru a tipări diagrama. În Microsoft Edge: click pe iconița popup blocat din bara de adrese → Always allow pop-ups from this site → Done.', 'warning', 9000);
+          return;
+        }
+
+        // Edge poate deschide tab-ul dar să returneze un handle limitat când fereastra e creată cu
+        // politici restrictive; dacă nu putem accesa documentul, tratăm explicit ca popup blocat.
+        if (!printWindow.document) {
           showToast('Popup blocat. Permite popup-urile pentru a tipări diagrama. În Microsoft Edge: click pe iconița popup blocat din bara de adrese → Always allow pop-ups from this site → Done.', 'warning', 9000);
           return;
         }
