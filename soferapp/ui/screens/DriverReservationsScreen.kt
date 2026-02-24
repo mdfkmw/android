@@ -236,6 +236,7 @@ fun DriverReservationsScreen(
             tripId = emitRes.tripId,
             fromStationId = emitRes.boardStationId,
             toStationId = emitRes.exitStationId,
+            seatId = emitRes.seatId,
             operatorId = DriverLocalStore.getOperatorId(),
             employeeId = DriverLocalStore.getEmployeeId(),
             routeScheduleId = routeScheduleId,
