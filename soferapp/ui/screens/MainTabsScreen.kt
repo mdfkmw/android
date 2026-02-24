@@ -24,6 +24,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import ro.priscom.sofer.ui.components.StatusBar
 import ro.priscom.sofer.ui.models.Route
@@ -97,6 +99,7 @@ fun MainTabsScreen(
 
     // ultima locație primită de la GPS
     var currentLocation by remember { mutableStateOf<Location?>(null) }
+    var lastGpsFixAtMs by remember { mutableStateOf<Long?>(null) }
 
     // LocationManager pentru GPS
     val locationManager = remember {
@@ -159,6 +162,7 @@ fun MainTabsScreen(
                 val listener = object : LocationListener {
                     override fun onLocationChanged(location: Location) {
                         currentLocation = location
+                        lastGpsFixAtMs = System.currentTimeMillis()
                         gpsStatus = "GPS: ON"
                     }
 
@@ -194,6 +198,37 @@ fun MainTabsScreen(
                     }
                 }
             }
+        }
+    }
+
+    // watchdog pentru cazurile în care emulatorul oprește semnalul fără callback explicit de provider
+    LaunchedEffect(locationManager, lastGpsFixAtMs) {
+        while (isActive) {
+            val manager = locationManager
+            if (manager != null) {
+                val providerEnabled = try {
+                    manager.isProviderEnabled(LocationManager.GPS_PROVIDER)
+                } catch (_: Exception) {
+                    false
+                }
+
+                val lastFix = lastGpsFixAtMs
+                val staleFix = lastFix != null && (System.currentTimeMillis() - lastFix) > 15000L
+
+                when {
+                    !providerEnabled -> {
+                        currentLocation = null
+                        gpsStatus = "GPS: OFF"
+                    }
+
+                    staleFix -> {
+                        currentLocation = null
+                        gpsStatus = "GPS: fără semnal"
+                    }
+                }
+            }
+
+            delay(2000L)
         }
     }
 
@@ -1517,4 +1552,3 @@ fun OperatiiTabScreen(
         }
     }
 }
-

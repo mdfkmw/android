@@ -439,7 +439,49 @@ interface BackendApiService {
 
 object BackendApi {
 
-    private const val BASE_URL = "http://10.0.2.2:5000/"
+    private const val DEFAULT_DEV_BASE_URL = "http://10.0.2.2:5000/"
+    private const val DEFAULT_PROD_BASE_URL = "https://your-hosting-domain.example/"
+
+    private fun normalizeBaseUrl(raw: String): String {
+        val trimmed = raw.trim()
+        return if (trimmed.endsWith("/")) trimmed else "$trimmed/"
+    }
+
+    private fun resolveBaseUrl(): String {
+        // 1) runtime override (util pentru teste pe telefon fizic)
+        val envOverride = System.getenv("SOFER_BACKEND_URL")?.trim().orEmpty()
+        if (envOverride.startsWith("http://") || envOverride.startsWith("https://")) {
+            return normalizeBaseUrl(envOverride)
+        }
+
+        // 2) dacă există BuildConfig/BACKEND_BASE_URL din flavor, îl folosim
+        try {
+            val clazz = Class.forName("ro.priscom.sofer.BuildConfig")
+
+            val backendFieldValue = runCatching {
+                clazz.getField("BACKEND_BASE_URL").get(null) as? String
+            }.getOrNull()
+
+            if (!backendFieldValue.isNullOrBlank()) {
+                return normalizeBaseUrl(backendFieldValue)
+            }
+
+            val flavor = runCatching {
+                clazz.getField("FLAVOR").get(null) as? String
+            }.getOrNull().orEmpty()
+
+            if (flavor.contains("prod", ignoreCase = true)) {
+                return DEFAULT_PROD_BASE_URL
+            }
+        } catch (_: Exception) {
+            // BuildConfig poate să nu fie disponibil în acest snapshot
+        }
+
+        // 3) fallback local emulator
+        return DEFAULT_DEV_BASE_URL
+    }
+
+    private val BASE_URL: String by lazy { resolveBaseUrl() }
 
     var authToken: String? = null
 
