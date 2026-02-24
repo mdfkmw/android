@@ -62,6 +62,7 @@ fun SeatMapTab(
     var routeLastStationId by remember { mutableStateOf<Int?>(null) }
 
     var openSeat by remember { mutableStateOf<SeatEntity?>(null) }
+    var isInitializing by remember(tripId) { mutableStateOf(true) }
 
     fun stationName(id: Int?): String {
         if (id == null) return "-"
@@ -107,6 +108,8 @@ fun SeatMapTab(
             refreshFromBackend()
         } catch (e: Exception) {
             Log.e("SeatMapTab", "LaunchedEffect init error", e)
+        } finally {
+            isInitializing = false
         }
     }
 
@@ -122,6 +125,13 @@ fun SeatMapTab(
     }
 
     // ======================= UI =======================
+
+    if (isInitializing) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("Se încarcă harta locurilor...", color = Color.Gray)
+        }
+        return
+    }
 
     if (vehicleId == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -145,7 +155,8 @@ fun SeatMapTab(
                 Button(
                     onClick = {
                         coroutineScope.launch {
-                            try { refreshFromBackend() } catch (e: Exception) { Log.e("SeatMapTab", "refresh error", e) }
+                            isInitializing = true
+                            try { refreshFromBackend() } catch (e: Exception) { Log.e("SeatMapTab", "refresh error", e) } finally { isInitializing = false }
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5BC21E))
