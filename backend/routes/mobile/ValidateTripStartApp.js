@@ -120,7 +120,7 @@ router.post(
         return res.json({
           ok: false,
           critical: false,
-          error: 'masina cu care te-ai logat nu e atribuita pe aceasta cursa'
+          error: 'Cursa este programată cu un alt vehicul. Verifică alocarea din dispecerat.'
         });
       }
 
@@ -139,7 +139,7 @@ router.post(
         return res.json({
           ok: false,
           critical: false,
-          error: 'nu iti este atribuita aceasta cursa'
+          error: 'Cursa este alocată unui alt șofer. Contactează dispeceratul.'
         });
       }
 
