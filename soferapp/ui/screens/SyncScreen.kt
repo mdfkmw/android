@@ -25,6 +25,7 @@ import java.time.format.DateTimeFormatter
 fun SyncScreen(
     db: AppDatabase,
     loggedIn: Boolean,
+    onSyncCompleted: () -> Unit = {},
     onBack: () -> Unit = {}
 ) {
 
@@ -101,6 +102,8 @@ fun SyncScreen(
                 success = success,
                 timestamp = finishedAt
             )
+
+            onSyncCompleted()
 
             isRunning = false
         }

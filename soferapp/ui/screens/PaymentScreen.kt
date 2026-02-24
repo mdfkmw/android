@@ -15,6 +15,7 @@ import ro.priscom.sofer.ui.data.local.StationEntity
 fun PaymentScreen(
     reservation: ReservationEntity,
     tripRouteScheduleId: Int?,
+    syncRefreshToken: Int = 0,
     repo: LocalRepository,
     onBack: () -> Unit,
     onConfirmPayment: (
@@ -42,7 +43,7 @@ fun PaymentScreen(
     var seatDisplay by remember { mutableStateOf(if (reservation.seatId == null) "-" else "Se încarcă nr de loc...") }
 
     // 1) Încărcăm stațiile pentru route_schedule-ul curent
-    LaunchedEffect(tripRouteScheduleId) {
+    LaunchedEffect(tripRouteScheduleId, syncRefreshToken) {
         routeStations = repo.getStationsForRouteSchedule(tripRouteScheduleId)
     }
 
@@ -66,7 +67,7 @@ fun PaymentScreen(
     }
 
     // 2) Încărcăm reducerile pentru cursa curentă
-    LaunchedEffect(tripRouteScheduleId) {
+    LaunchedEffect(tripRouteScheduleId, syncRefreshToken) {
         discountList = repo.getDiscountsForRouteSchedule(tripRouteScheduleId)
     }
 
@@ -105,7 +106,7 @@ fun PaymentScreen(
     }
 
     // 4) Când se schimbă destinația, recalculează prețul de bază (dacă putem)
-    LaunchedEffect(tripRouteScheduleId, boardStationId, selectedExitStationId) {
+    LaunchedEffect(tripRouteScheduleId, boardStationId, selectedExitStationId, syncRefreshToken) {
         if (tripRouteScheduleId == null || boardStationId == null || selectedExitStationId == null) {
             basePriceForSelection = initialBase
         } else {

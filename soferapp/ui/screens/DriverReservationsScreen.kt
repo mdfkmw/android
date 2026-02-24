@@ -33,6 +33,7 @@ fun DriverReservationsScreen(
     tripId: Int,
     currentStopName: String?,
     routeScheduleId: Int?,
+    syncRefreshToken: Int,
     repo: LocalRepository,
     onBack: () -> Unit
 ) {
@@ -52,22 +53,22 @@ fun DriverReservationsScreen(
     var routeDiscounts by remember { mutableStateOf<List<DiscountTypeEntity>>(emptyList()) }
 
     // când intrăm în ecran: citim rezervările din SQLite
-    LaunchedEffect(tripId) {
+    LaunchedEffect(tripId, syncRefreshToken) {
         allReservations = repo.getReservationsForTrip(tripId)
     }
 
     // încărcăm toate stațiile (ca să afișăm numele, nu ID-ul)
-    LaunchedEffect(Unit) {
+    LaunchedEffect(syncRefreshToken) {
         val stations = repo.getAllStations()
         stationNameById = stations.associate { it.id to it.name }
     }
 
     // determinăm stationId pentru stația curentă (din nume)
-    LaunchedEffect(currentStopName) {
+    LaunchedEffect(currentStopName, syncRefreshToken) {
         currentStationId = currentStopName?.let { repo.getStationIdByName(it) }
     }
 
-    LaunchedEffect(routeScheduleId) {
+    LaunchedEffect(routeScheduleId, syncRefreshToken) {
         val routeId = repo.getRouteSchedule(routeScheduleId)?.routeId
         val routeEntity = routeId?.let { repo.getRouteById(it) }
         hasSeatReservations =
@@ -176,6 +177,7 @@ fun DriverReservationsScreen(
         PaymentScreen(
             reservation = paymentReservation,
             tripRouteScheduleId = routeScheduleId,
+            syncRefreshToken = syncRefreshToken,
             repo = repo,
             onBack = { openPaymentFor = null },
             onConfirmPayment = { newExitId, discount, description ->
@@ -239,6 +241,7 @@ fun DriverReservationsScreen(
             seatId = emitRes.seatId,
             operatorId = DriverLocalStore.getOperatorId(),
             employeeId = DriverLocalStore.getEmployeeId(),
+            syncRefreshToken = syncRefreshToken,
             routeScheduleId = routeScheduleId,
             repo = repo,
             initialDiscountLabel = emitDiscountLabel,
@@ -266,6 +269,7 @@ fun DriverReservationsScreen(
             seatId = seatMapSell.seatId,
             operatorId = DriverLocalStore.getOperatorId(),
             employeeId = DriverLocalStore.getEmployeeId(),
+            syncRefreshToken = syncRefreshToken,
             routeScheduleId = routeScheduleId,
             repo = repo,
             onBack = { openSellFromSeatMap = null },

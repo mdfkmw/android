@@ -36,6 +36,7 @@ data class DiscountOption(
 fun ReduceriScreen(
     repo: LocalRepository,
     routeScheduleId: Int?,
+    syncRefreshToken: Int = 0,
     onBack: () -> Unit,
     onSelect: (DiscountOption?) -> Unit
 )
@@ -46,7 +47,7 @@ fun ReduceriScreen(
      var options by remember { mutableStateOf<List<DiscountOption>>(emptyList()) }
 
 // încărcăm reducerile din SQLite, pentru routeScheduleId
-     LaunchedEffect(routeScheduleId) {
+     LaunchedEffect(routeScheduleId, syncRefreshToken) {
          if (routeScheduleId == null) {
              options = listOf(
                  DiscountOption(

@@ -59,6 +59,7 @@ fun MainTabsScreen(
     routeInfo: String,
     loggedIn: Boolean,
     selectedVehicleId: Int?,
+    syncRefreshToken: Int = 0,
     onOpenSync: () -> Unit = {},
     onOpenLogin: () -> Unit = {},
     onLogout: () -> Unit = {}
@@ -216,7 +217,7 @@ fun MainTabsScreen(
     }
 
 
-    LaunchedEffect(currentRouteId, currentDirection) {
+    LaunchedEffect(currentRouteId, currentDirection, syncRefreshToken) {
         val stations = currentRouteId?.let { routeId ->
             // preferăm să lăsăm backend-ul să returneze lista gata ordonată
             val remote = remoteRepo.getRouteStations(routeId, currentDirection)
@@ -238,7 +239,7 @@ fun MainTabsScreen(
     }
 
     // când avem rută selectată și locație, calculăm stația curentă
-    LaunchedEffect(currentRouteId, currentDirection, currentLocation) {
+    LaunchedEffect(currentRouteId, currentDirection, currentLocation, syncRefreshToken) {
         val routeId = currentRouteId
         val loc = currentLocation
         if (routeId != null && loc != null) {
@@ -325,6 +326,7 @@ fun MainTabsScreen(
                     loggedIn = loggedIn,
                     tripStarted = tripStarted,
                     selectedVehicleId = selectedVehicleId,
+                    syncRefreshToken = syncRefreshToken,
                     onRouteSelected = { routeId, routeName, hour, tripId, direction, routeScheduleId ->
                         currentRouteId = routeId
                         currentDirection = direction
@@ -360,6 +362,7 @@ fun MainTabsScreen(
                     routeScheduleId = currentRouteScheduleId,
                     tripId = currentTripId,               // 🆕 trimitem trip-ul curent
                     tripVehicleId = selectedVehicleId,    // 🆕 trimitem vehiculul selectat
+                    syncRefreshToken = syncRefreshToken,
                     repo = repo,
                     onAutoSelectedChange = { checked ->
                         autoSelectedTouched = true
@@ -417,6 +420,7 @@ fun AdminTabScreen(
     loggedIn: Boolean,
     tripStarted: Boolean,
     selectedVehicleId: Int?,
+    syncRefreshToken: Int,
     onRouteSelected: (Int, String, String, Int?, String?, Int?) -> Unit,
     onEndTrip: () -> Unit,
     onOpenSync: () -> Unit,
@@ -452,8 +456,8 @@ fun AdminTabScreen(
     var showCloseDay by remember { mutableStateOf(false) }
     var offlineDialogData by remember { mutableStateOf<OfflineDialogData?>(null) }
 
-    // 🔹 Rulăm efectul doar când se schimbă starea de login
-    LaunchedEffect(loggedIn) {
+    // 🔹 Reîncărcăm rutele când se schimbă login-ul sau când se termină un sync.
+    LaunchedEffect(loggedIn, syncRefreshToken) {
         startTripError = null
 
         // Dacă NU e logat încă, nu pregătim rute și nu afișăm erori
@@ -1125,6 +1129,7 @@ fun OperatiiTabScreen(
     routeScheduleId: Int?,
     tripId: Int?,                    // 🆕 id-ul cursei curente
     tripVehicleId: Int?,             // 🆕 vehiculul folosit pe cursă
+    syncRefreshToken: Int,
     repo: LocalRepository,
     onAutoSelectedChange: (Boolean) -> Unit,
     onManualDepartureStationSelected: (String) -> Unit,
@@ -1177,7 +1182,7 @@ fun OperatiiTabScreen(
         }
     }
 
-    LaunchedEffect(currentStopName, routeId) {
+    LaunchedEffect(currentStopName, routeId, syncRefreshToken) {
         fromStationId = currentStopName?.let { repo.getStationIdByName(it) }
         priceListId = routeId?.let { repo.getPriceListIdForRoute(it) }
     }
@@ -1228,6 +1233,7 @@ fun OperatiiTabScreen(
                 tripId = tripId,
                 currentStopName = currentStopName,
                 routeScheduleId = routeScheduleId,
+                syncRefreshToken = syncRefreshToken,
                 repo = repo,
                 onBack = { showReservations = false }
             )
@@ -1263,6 +1269,7 @@ fun OperatiiTabScreen(
                 tripVehicleId = tripVehicleId,
                 operatorId = DriverLocalStore.getOperatorId(),
                 employeeId = DriverLocalStore.getEmployeeId(),
+                syncRefreshToken = syncRefreshToken,
 
                 routeScheduleId = routeScheduleId,
                 repo = repo

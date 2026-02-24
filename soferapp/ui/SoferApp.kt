@@ -25,6 +25,7 @@ fun SoferApp(db: AppDatabase) {
     var showSyncScreen by remember { mutableStateOf(false) }
     var showLoginDialog by remember { mutableStateOf(false) }
     var showSelectVehicleScreen by remember { mutableStateOf(false) }
+    var syncRefreshToken by remember { mutableIntStateOf(0) }
 
     val remoteSyncRepo = remember { RemoteSyncRepository() }
 
@@ -151,6 +152,7 @@ fun SoferApp(db: AppDatabase) {
                 routeInfo = "Nicio cursă selectată încă",
                 loggedIn = driverId != null,
                 selectedVehicleId = selectedVehicle?.id,
+                syncRefreshToken = syncRefreshToken,
                 onOpenSync = { showSyncScreen = true },
                 onOpenLogin = { showLoginDialog = true },
                 onLogout = {
@@ -168,6 +170,9 @@ fun SoferApp(db: AppDatabase) {
         SyncScreen(
             db = db,
             loggedIn = driverId != null,
+            onSyncCompleted = {
+                syncRefreshToken++
+            },
             onBack = { showSyncScreen = false }
         )
     }

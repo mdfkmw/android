@@ -44,6 +44,7 @@ fun BiletDetaliiScreen(
     operatorId: Int? = null,
     employeeId: Int? = null,
     tripVehicleId: Int? = null,
+    syncRefreshToken: Int = 0,
 
     routeScheduleId: Int? = null,
     repo: ro.priscom.sofer.ui.data.local.LocalRepository? = null,
@@ -96,18 +97,18 @@ fun BiletDetaliiScreen(
         }
     }
 
-    LaunchedEffect(routeScheduleId, repo) {
+    LaunchedEffect(routeScheduleId, repo, syncRefreshToken) {
         val localRepo = repo ?: return@LaunchedEffect
         routeStations = localRepo.getStationsForRouteSchedule(routeScheduleId)
 
     }
 
-    LaunchedEffect(seatId, repo) {
+    LaunchedEffect(seatId, repo, syncRefreshToken) {
         val localRepo = repo ?: return@LaunchedEffect
         seatDisplay = localRepo.getSeatLabelById(seatId) ?: if (seatId != null) seatId.toString() else "-"
     }
 
-    LaunchedEffect(routeScheduleId, fromStationId, selectedToStationId, repo) {
+    LaunchedEffect(routeScheduleId, fromStationId, selectedToStationId, repo, syncRefreshToken) {
         val localRepo = repo ?: return@LaunchedEffect
         if (routeScheduleId == null || fromStationId == null || selectedToStationId == null) return@LaunchedEffect
 
@@ -167,6 +168,7 @@ fun BiletDetaliiScreen(
              ReduceriScreen(
                  repo = nonNullRepo,
                  routeScheduleId = routeScheduleId,
+                 syncRefreshToken = syncRefreshToken,
                  onBack = { showReduceri = false },
                  onSelect = { opt ->
                      selectedDiscount = opt
