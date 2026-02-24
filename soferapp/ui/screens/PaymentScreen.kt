@@ -47,7 +47,7 @@ fun PaymentScreen(
 
     LaunchedEffect(reservation.seatId) {
         val label = repo.getSeatLabelById(reservation.seatId)
-        seatDisplay = if (!label.isNullOrBlank()) label else (reservation.seatId?.toString() ?: "-")
+        seatDisplay = if (!label.isNullOrBlank()) label else "EROARE: label loc lipsă"
     }
 
     // 2) Încărcăm reducerile pentru cursa curentă

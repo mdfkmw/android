@@ -115,7 +115,7 @@ fun DriverReservationsScreen(
 
     fun seatDisplay(seatId: Int?): String {
         if (seatId == null) return "-"
-        return seatLabelBySeatId[seatId] ?: seatId.toString()
+        return seatLabelBySeatId[seatId] ?: "EROARE: label loc lipsă"
     }
 
 
