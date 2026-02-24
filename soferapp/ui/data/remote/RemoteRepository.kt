@@ -2,10 +2,18 @@ package ro.priscom.sofer.ui.data.remote
 
 import android.util.Log
 import java.time.LocalDate
+import org.json.JSONObject
+import retrofit2.HttpException
+
+data class LoginAttemptResult(
+    val user: AuthUserDto?,
+    val errorMessage: String? = null,
+    val httpCode: Int? = null
+)
 
 class RemoteRepository {
 
-    suspend fun login(identifier: String, password: String): AuthUserDto? {
+    suspend fun login(identifier: String, password: String): LoginAttemptResult {
         return try {
             val response = BackendApi.service.login(
                 LoginRequest(identifier, password)
@@ -13,15 +21,45 @@ class RemoteRepository {
 
             if (response.ok && response.user != null) {
                 BackendApi.authToken = response.token
-                response.user
+                LoginAttemptResult(user = response.user)
             } else {
-                null
+                LoginAttemptResult(
+                    user = null,
+                    errorMessage = "Serverul a refuzat autentificarea. Verifică ID-ul și parola."
+                )
             }
 
+        } catch (e: HttpException) {
+            val rawError = e.response()?.errorBody()?.string().orEmpty()
+            val parsedError = parseBackendError(rawError)
+            val message = parsedError
+                ?: "Autentificare eșuată (${e.code()}). Verifică datele și încearcă din nou."
+
+            Log.e("RemoteRepository", "Login error ${e.code()} - $message")
+            LoginAttemptResult(
+                user = null,
+                errorMessage = message,
+                httpCode = e.code()
+            )
         } catch (e: Exception) {
             Log.e("RemoteRepository", "Login error", e)
-            null
+            LoginAttemptResult(
+                user = null,
+                errorMessage = "Nu ne-am putut conecta la server. Verifică internetul și încearcă din nou."
+            )
         }
+    }
+
+    private fun parseBackendError(rawError: String): String? {
+        if (rawError.isBlank()) return null
+
+        return runCatching {
+            val json = JSONObject(rawError)
+            json.optString("message")
+                .ifBlank { json.optString("error") }
+                .ifBlank { json.optString("details") }
+                .ifBlank { null }
+        }.getOrNull()
     }
 
     suspend fun getRoutesWithTripsForToday(): List<MobileRouteWithTripsDto>? {

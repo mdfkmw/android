@@ -76,7 +76,8 @@ fun LoginScreen(
 
                     // 1. Încearcă backend login
                     val remote = RemoteRepository()
-                    val backendUser = remote.login(driverIdText, passwordText)
+                    val loginResult = remote.login(driverIdText, passwordText)
+                    val backendUser = loginResult.user
 
                     if (backendUser != null) {
                         DriverLocalStore.setEmployeeId(backendUser.id)
@@ -90,12 +91,24 @@ fun LoginScreen(
                     val driver = repo.getDriver(id)
 
                     if (driver == null) {
-                        error = "Nu există șofer cu acest ID"
+                        error = buildString {
+                            append("Nu există șofer cu acest ID")
+                            loginResult.errorMessage?.let {
+                                append(". Server: ")
+                                append(it)
+                            }
+                        }
                         return@launch
                     }
 
                     if (driver.password != passwordText) {
-                        error = "Parolă greșită"
+                        error = buildString {
+                            append("Parolă greșită")
+                            loginResult.errorMessage?.let {
+                                append(". Server: ")
+                                append(it)
+                            }
+                        }
                         return@launch
                     }
 
