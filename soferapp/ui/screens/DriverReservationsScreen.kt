@@ -188,10 +188,21 @@ fun DriverReservationsScreen(
 // dacă emitem bilet direct din rezervare
     val emitRes = openEmitBiletFor
     if (emitRes != null) {
+        val emitBasePrice = emitRes.basePrice ?: emitRes.finalPrice
+        val emitDiscountPercent = if (
+            emitRes.basePrice != null &&
+            emitRes.basePrice > 0.0 &&
+            (emitRes.discountAmount ?: 0.0) > 0.0
+        ) {
+            ((emitRes.discountAmount ?: 0.0) / emitRes.basePrice) * 100.0
+        } else {
+            null
+        }
+
         BiletDetaliiScreen(
             destination = stationName(emitRes.exitStationId), // direct din rezervare
             currentStopName = stationName(emitRes.boardStationId),
-            ticketPrice = emitRes.finalPrice,
+            ticketPrice = emitBasePrice,
             tripId = emitRes.tripId,
             fromStationId = emitRes.boardStationId,
             toStationId = emitRes.exitStationId,
@@ -199,6 +210,8 @@ fun DriverReservationsScreen(
             employeeId = DriverLocalStore.getEmployeeId(),
             routeScheduleId = routeScheduleId,
             repo = repo,
+            initialDiscountLabel = emitRes.discountLabel,
+            initialDiscountPercent = emitDiscountPercent,
             onBack = { openEmitBiletFor = null },
             onIncasare = { openEmitBiletFor = null }
         )

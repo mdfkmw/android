@@ -45,7 +45,9 @@ fun BiletDetaliiScreen(
     tripVehicleId: Int? = null,
 
     routeScheduleId: Int? = null,
-    repo: ro.priscom.sofer.ui.data.local.LocalRepository? = null
+    repo: ro.priscom.sofer.ui.data.local.LocalRepository? = null,
+    initialDiscountLabel: String? = null,
+    initialDiscountPercent: Double? = null
 )
  {
     val activeGreen = Color(0xFF5BC21E)
@@ -60,7 +62,19 @@ fun BiletDetaliiScreen(
     var pretBrut by remember(ticketPrice) { mutableStateOf(ticketPrice ?: 0.0) }
     var dusIntors by remember { mutableStateOf(false) }
     var quantity by remember { mutableStateOf(1) }
-    var selectedDiscount by remember { mutableStateOf<DiscountOption?>(null) }
+    var selectedDiscount by remember(initialDiscountLabel, initialDiscountPercent) {
+        mutableStateOf(
+            if (!initialDiscountLabel.isNullOrBlank() && (initialDiscountPercent ?: 0.0) > 0.0) {
+                DiscountOption(
+                    id = null,
+                    label = initialDiscountLabel,
+                    percent = initialDiscountPercent
+                )
+            } else {
+                null
+            }
+        )
+    }
     var showReduceri by remember { mutableStateOf(false) }
     var selectedPaymentMethod by remember { mutableStateOf("cash") } // deocamdată doar cash
 
