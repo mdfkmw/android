@@ -1,6 +1,7 @@
 package ro.priscom.sofer.ui.data.remote
 
 import com.google.gson.annotations.SerializedName
+import okhttp3.HttpUrl
 import okhttp3.JavaNetCookieJar
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
@@ -12,6 +13,7 @@ import retrofit2.http.POST
 import retrofit2.http.Query
 import java.net.CookieManager
 import java.net.CookiePolicy
+import java.net.URI
 import retrofit2.http.Path
 import ro.priscom.sofer.BuildConfig
 
@@ -438,6 +440,15 @@ interface BackendApiService {
 // === Singleton pentru Retrofit + cookie-uri de sesiune ===
 
 object BackendApi {
+    private fun extractCsrfToken(url: HttpUrl): String? {
+        val uri = URI.create(url.toString())
+        return cookieManager.cookieStore
+            .get(uri)
+            .firstOrNull { it.name == "csrf_token" }
+            ?.value
+            ?.takeIf { it.isNotBlank() }
+    }
+
 
     private const val DEFAULT_DEV_BASE_URL = "http://10.0.2.2:5000/"
     private const val DEFAULT_PROD_BASE_URL = "https://api.pris-com.ro/"
@@ -495,12 +506,21 @@ object BackendApi {
         }
 
         val authInterceptor = okhttp3.Interceptor { chain ->
-            val request = authToken?.let {
-                chain.request().newBuilder()
-                    .header("Authorization", "Bearer $it")
-                    .build()
-            } ?: chain.request()
-            chain.proceed(request)
+            val originalRequest = chain.request()
+            val builder = originalRequest.newBuilder()
+
+            authToken?.let {
+                builder.header("Authorization", "Bearer $it")
+            }
+
+            val method = originalRequest.method.uppercase()
+            if (method in setOf("POST", "PUT", "PATCH", "DELETE")) {
+                extractCsrfToken(originalRequest.url)?.let { csrfToken ->
+                    builder.header("X-CSRF-Token", csrfToken)
+                }
+            }
+
+            chain.proceed(builder.build())
         }
 
         OkHttpClient.Builder()

@@ -61,13 +61,18 @@ class RemoteRepository {
     private fun parseBackendError(rawError: String): String? {
         if (rawError.isBlank()) return null
 
-        return runCatching {
+        val parsed = runCatching {
             val json = JSONObject(rawError)
             json.optString("message")
                 .ifBlank { json.optString("error") }
                 .ifBlank { json.optString("details") }
                 .ifBlank { null }
         }.getOrNull()
+
+        return when (parsed) {
+            "csrf_invalid" -> "Sesiunea de securitate a expirat. Apasă logout și autentifică-te din nou."
+            else -> parsed
+        }
     }
 
     suspend fun getRoutesWithTripsForToday(): List<MobileRouteWithTripsDto>? {
