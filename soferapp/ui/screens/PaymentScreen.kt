@@ -5,6 +5,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
 import ro.priscom.sofer.ui.data.local.DiscountTypeEntity
 import ro.priscom.sofer.ui.data.local.LocalRepository
 import ro.priscom.sofer.ui.data.local.ReservationEntity
@@ -38,7 +39,7 @@ fun PaymentScreen(
     var discountList by remember { mutableStateOf<List<DiscountTypeEntity>>(emptyList()) }
     var selectedDiscount by remember { mutableStateOf<DiscountTypeEntity?>(null) }
     var descriptionText by remember { mutableStateOf("") }
-    var seatDisplay by remember { mutableStateOf(reservation.seatId?.toString() ?: "-") }
+    var seatDisplay by remember { mutableStateOf(if (reservation.seatId == null) "-" else "Se încarcă nr de loc...") }
 
     // 1) Încărcăm stațiile pentru route_schedule-ul curent
     LaunchedEffect(tripRouteScheduleId) {
@@ -46,8 +47,22 @@ fun PaymentScreen(
     }
 
     LaunchedEffect(reservation.seatId) {
-        val label = repo.getSeatLabelById(reservation.seatId)
-        seatDisplay = if (!label.isNullOrBlank()) label else "EROARE: label loc lipsă"
+        if (reservation.seatId == null) {
+            seatDisplay = "-"
+            return@LaunchedEffect
+        }
+
+        repeat(10) { attempt ->
+            val label = repo.getSeatLabelById(reservation.seatId)
+            if (!label.isNullOrBlank()) {
+                seatDisplay = label
+                return@LaunchedEffect
+            }
+            if (attempt < 9) delay(500)
+        }
+
+        // dacă tot nu avem label, rămâne mesajul de încărcare
+        seatDisplay = "Se încarcă nr de loc..."
     }
 
     // 2) Încărcăm reducerile pentru cursa curentă

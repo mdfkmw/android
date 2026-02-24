@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ro.priscom.sofer.ui.data.DriverLocalStore
 import ro.priscom.sofer.ui.data.local.LocalRepository
@@ -102,20 +103,31 @@ fun DriverReservationsScreen(
     }
 
     LaunchedEffect(allReservations) {
-        val labels = mutableMapOf<Int, String>()
-        allReservations
-            .mapNotNull { it.seatId }
-            .distinct()
-            .forEach { seatId ->
+        val seatIds = allReservations.mapNotNull { it.seatId }.distinct()
+        if (seatIds.isEmpty()) {
+            seatLabelBySeatId = emptyMap()
+            return@LaunchedEffect
+        }
+
+        // dăm timp scurt sync-ului de seats_local să termine
+        repeat(10) { attempt ->
+            val labels = mutableMapOf<Int, String>()
+            seatIds.forEach { seatId ->
                 val label = repo.getSeatLabelById(seatId)
                 if (!label.isNullOrBlank()) labels[seatId] = label
             }
-        seatLabelBySeatId = labels
+            seatLabelBySeatId = labels
+
+            val allResolved = seatIds.all { labels[it] != null }
+            if (allResolved) return@LaunchedEffect
+
+            if (attempt < 9) delay(500)
+        }
     }
 
     fun seatDisplay(seatId: Int?): String {
         if (seatId == null) return "-"
-        return seatLabelBySeatId[seatId] ?: "EROARE: label loc lipsă"
+        return seatLabelBySeatId[seatId] ?: "Se încarcă nr de loc..."
     }
 
 
