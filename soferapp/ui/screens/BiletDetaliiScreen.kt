@@ -68,7 +68,7 @@ fun BiletDetaliiScreen(
                 DiscountOption(
                     id = null,
                     label = initialDiscountLabel,
-                    percent = initialDiscountPercent
+                    percent = initialDiscountPercent ?: 0.0
                 )
             } else {
                 null
