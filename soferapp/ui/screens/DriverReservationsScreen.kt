@@ -14,11 +14,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ro.priscom.sofer.ui.data.DriverLocalStore
 import ro.priscom.sofer.ui.data.local.LocalRepository
 import ro.priscom.sofer.ui.data.local.ReservationEntity
-import ui.screens.SeatMapTab
+import ro.priscom.sofer.ui.screens.SeatMapTab
 private enum class ReservationsTab {
     URCARI_AICI,
     TOATE,
@@ -41,10 +42,12 @@ fun DriverReservationsScreen(
 
     var allReservations by remember { mutableStateOf<List<ReservationEntity>>(emptyList()) }
     var stationNameById by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
+    var seatLabelBySeatId by remember { mutableStateOf<Map<Int, String>>(emptyMap()) }
     var currentStationId by remember { mutableStateOf<Int?>(null) }
 
     var selectedTab by remember { mutableStateOf(ReservationsTab.URCARI_AICI) }
     var seatMapRefreshTrigger by remember { mutableStateOf(0) }
+    var hasSeatReservations by remember { mutableStateOf(false) }
 
     // când intrăm în ecran: citim rezervările din SQLite
     LaunchedEffect(tripId) {
@@ -60,6 +63,18 @@ fun DriverReservationsScreen(
     // determinăm stationId pentru stația curentă (din nume)
     LaunchedEffect(currentStopName) {
         currentStationId = currentStopName?.let { repo.getStationIdByName(it) }
+    }
+
+    LaunchedEffect(routeScheduleId) {
+        val routeId = repo.getRouteSchedule(routeScheduleId)?.routeId
+        val routeEntity = routeId?.let { repo.getRouteById(it) }
+        hasSeatReservations =
+            (routeEntity?.visibleInReservations == true) ||
+                    (routeEntity?.visibleOnline == true)
+
+        if (!hasSeatReservations && selectedTab == ReservationsTab.HARTA) {
+            selectedTab = ReservationsTab.URCARI_AICI
+        }
     }
 
     // funcție helper: nume stație din id
@@ -85,6 +100,34 @@ fun DriverReservationsScreen(
             it.boardStationId == currentStationId &&
                     it.status != "cancelled"
         }
+    }
+
+    LaunchedEffect(allReservations) {
+        val seatIds = allReservations.mapNotNull { it.seatId }.distinct()
+        if (seatIds.isEmpty()) {
+            seatLabelBySeatId = emptyMap()
+            return@LaunchedEffect
+        }
+
+        // dăm timp scurt sync-ului de seats_local să termine
+        repeat(10) { attempt ->
+            val labels = mutableMapOf<Int, String>()
+            seatIds.forEach { seatId ->
+                val label = repo.getSeatLabelById(seatId)
+                if (!label.isNullOrBlank()) labels[seatId] = label
+            }
+            seatLabelBySeatId = labels
+
+            val allResolved = seatIds.all { labels[it] != null }
+            if (allResolved) return@LaunchedEffect
+
+            if (attempt < 9) delay(500)
+        }
+    }
+
+    fun seatDisplay(seatId: Int?): String {
+        if (seatId == null) return "-"
+        return seatLabelBySeatId[seatId] ?: "Se încarcă nr de loc..."
     }
 
 
@@ -189,6 +232,7 @@ fun DriverReservationsScreen(
     if (sel != null) {
         ReservationDetailsScreen(
             reservation = sel,
+            seatDisplay = seatDisplay(sel.seatId),
             fromStationName = stationName(sel.boardStationId),
             toStationName = stationName(sel.exitStationId),
             onBack = { selectedReservation = null },
@@ -306,11 +350,13 @@ fun DriverReservationsScreen(
                 onClick = { selectedTab = ReservationsTab.ISTORIC },
                 text = { Text("ISTORIC") }
             )
-            Tab(
-                selected = selectedTab == ReservationsTab.HARTA,
-                onClick = { selectedTab = ReservationsTab.HARTA },
-                text = { Text("HARTĂ") }
-            )
+            if (hasSeatReservations) {
+                Tab(
+                    selected = selectedTab == ReservationsTab.HARTA,
+                    onClick = { selectedTab = ReservationsTab.HARTA },
+                    text = { Text("HARTĂ") }
+                )
+            }
         }
 
         // conținut tab-uri – ocupă tot spațiul rămas
@@ -323,6 +369,7 @@ fun DriverReservationsScreen(
                 ReservationsTab.URCARI_AICI -> {
                     ReservationsList(
                         reservations = reservationsHere,
+                        seatDisplay = ::seatDisplay,
                         stationName = ::stationName,
                         emptyMessage = if (currentStationId == null)
                             "Nu avem ID pentru stația curentă (GPS)."
@@ -335,6 +382,7 @@ fun DriverReservationsScreen(
                 ReservationsTab.TOATE -> {
                     ReservationsList(
                         reservations = reservationsSorted.filter { it.status != "cancelled" },
+                        seatDisplay = ::seatDisplay,
                         stationName = ::stationName,
                         emptyMessage = "Nu există rezervări pentru această cursă.",
                         onReservationClick = { selectedReservation = it }
@@ -346,23 +394,33 @@ fun DriverReservationsScreen(
                         reservations = allReservations.filter {
                             it.status == "cancelled" || it.status == "no_show"
                         },
+                        seatDisplay = ::seatDisplay,
                         stationName = ::stationName
                     )
                 }
                 ReservationsTab.HARTA -> {
-                    SeatMapTab(
-                        tripId = tripId,
-                        currentStationId = currentStationId,
-                        routeScheduleId = routeScheduleId,
-                        repo = repo,
-                        refreshTrigger = seatMapRefreshTrigger,
-                        onSellTicket = { seatId, fromStationId, toStationId ->
-                            openSellFromSeatMap = SeatMapSell(seatId, fromStationId, toStationId)
-                        },
-                        onOpenReservationDetails = { res ->
-                            selectedReservation = res
+                    if (hasSeatReservations) {
+                        SeatMapTab(
+                            tripId = tripId,
+                            currentStationId = currentStationId,
+                            routeScheduleId = routeScheduleId,
+                            repo = repo,
+                            refreshTrigger = seatMapRefreshTrigger,
+                            onSellTicket = { seatId, fromStationId, toStationId ->
+                                openSellFromSeatMap = SeatMapSell(seatId, fromStationId, toStationId)
+                            },
+                            onOpenReservationDetails = { res ->
+                                selectedReservation = res
+                            }
+                        )
+                    } else {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("Harta locurilor este disponibilă doar la cursele cu rezervări.", color = Color.Gray)
                         }
-                    )
+                    }
                 }
 
             }
@@ -439,6 +497,7 @@ fun DriverReservationsScreen(
 @Composable
 private fun ReservationsList(
     reservations: List<ReservationEntity>,
+    seatDisplay: (Int?) -> String,
     stationName: (Int?) -> String,
     emptyMessage: String,
     onReservationClick: (ReservationEntity) -> Unit
@@ -466,7 +525,7 @@ private fun ReservationsList(
                     .padding(vertical = 8.dp)
             ) {
                 Text(
-                    text = "Loc ${res.seatId ?: "-"} – ${res.personName ?: "Fără nume"}",
+                    text = "Loc ${seatDisplay(res.seatId)} – ${res.personName ?: "Fără nume"}",
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
                 )
@@ -509,6 +568,7 @@ private fun ReservationsList(
 @Composable
 private fun ReservationsHistoryTab(
     reservations: List<ReservationEntity>,
+    seatDisplay: (Int?) -> String,
     stationName: (Int?) -> String
 ) {
     val tickets = DriverLocalStore.getTickets()
@@ -546,7 +606,7 @@ private fun ReservationsHistoryTab(
                         .padding(vertical = 6.dp)
                 ) {
                     Text(
-                        text = "Loc ${res.seatId ?: "-"} – ${res.personName ?: "Fără nume"}",
+                        text = "Loc ${seatDisplay(res.seatId)} – ${res.personName ?: "Fără nume"}",
                         fontWeight = FontWeight.Bold,
                         fontSize = 14.sp
                     )
@@ -608,6 +668,7 @@ private fun ReservationsHistoryTab(
 @Composable
 fun ReservationDetailsScreen(
     reservation: ReservationEntity,
+    seatDisplay: String,
     fromStationName: String,
     toStationName: String,
     onBack: () -> Unit,
@@ -653,7 +714,7 @@ fun ReservationDetailsScreen(
             Column {
                 Text("Detalii rezervare", fontSize = 18.sp)
                 Text(
-                    "Loc ${reservation.seatId ?: "-"} – ${reservation.personName ?: ""}",
+                    "Loc $seatDisplay – ${reservation.personName ?: ""}",
                     fontSize = 14.sp
                 )
             }
@@ -671,7 +732,7 @@ fun ReservationDetailsScreen(
 
             DetailRow("Nume", reservation.personName ?: "—")
             DetailRow("Telefon", reservation.personPhone ?: "—")
-            DetailRow("Loc", reservation.seatId?.toString() ?: "—")
+            DetailRow("Loc", seatDisplay)
             DetailRow("Segment", "$fromStationName → $toStationName")
 
             Spacer(Modifier.height(8.dp))

@@ -330,12 +330,25 @@ fun MainTabsScreen(
             }
         }
     }
-    // Când se schimbă trip-ul curent, sincronizăm rezervările din backend în SQLite
-    LaunchedEffect(currentTripId) {
+    // Când se schimbă trip-ul curent, sincronizăm rezervările din backend în SQLite.
+    // Pentru cursele cu rezervări, populăm și seats_local imediat (fără click pe HARTĂ).
+    LaunchedEffect(currentTripId, currentRouteId) {
         val tripId = currentTripId
         if (tripId != null) {
             try {
                 repo.refreshReservationsForTrip(tripId)
+
+                val routeId = currentRouteId
+                val routeEntity = routeId?.let { repo.getRouteById(it) }
+                val hasSeatReservations =
+                    (routeEntity?.visibleInReservations == true) ||
+                            (routeEntity?.visibleOnline == true)
+
+                if (hasSeatReservations) {
+                    // Inițializăm seats_local imediat ce șoferul a ales cursa+ora.
+                    // Dacă mașina nu e atașată încă, repo tratează intern cazul (404 -> null).
+                    repo.refreshMySeatMapForTrip(tripId)
+                }
             } catch (e: Exception) {
                 // doar log, să nu pice UI-ul
                 android.util.Log.e("MainTabsScreen", "Error refreshing reservations for trip=$tripId", e)
@@ -1461,9 +1474,6 @@ fun OperatiiTabScreen(
         }
     }
 }
-
-
-
 
 
 

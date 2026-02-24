@@ -16,4 +16,7 @@ interface SeatDao {
 
     @Query("DELETE FROM seats_local WHERE vehicleId = :vehicleId")
     suspend fun deleteByVehicle(vehicleId: Int)
+
+    @Query("SELECT * FROM seats_local WHERE id = :seatId LIMIT 1")
+    suspend fun getById(seatId: Int): SeatEntity?
 }

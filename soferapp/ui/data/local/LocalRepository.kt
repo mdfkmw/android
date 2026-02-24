@@ -597,9 +597,13 @@ class LocalRepository(context: Context) {
         return db.seatDao().getByVehicle(vehicleId)
     }
 
+    suspend fun getSeatLabelById(seatId: Int?): String? {
+        if (seatId == null) return null
+        return db.seatDao().getById(seatId)?.label
+    }
+
 
 
 }
-
 
 
