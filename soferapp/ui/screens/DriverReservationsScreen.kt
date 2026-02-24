@@ -189,15 +189,21 @@ fun DriverReservationsScreen(
     val emitRes = openEmitBiletFor
     if (emitRes != null) {
         val emitBasePrice = emitRes.basePrice ?: emitRes.finalPrice
+        val emitEffectiveDiscountAmount = when {
+            (emitRes.discountAmount ?: 0.0) > 0.0 -> emitRes.discountAmount ?: 0.0
+            (emitRes.basePrice ?: 0.0) > 0.0 && (emitRes.finalPrice ?: 0.0) >= 0.0 -> {
+                ((emitRes.basePrice ?: 0.0) - (emitRes.finalPrice ?: 0.0)).coerceAtLeast(0.0)
+            }
+            else -> 0.0
+        }
         val emitDiscountPercent = if (
-            emitRes.basePrice != null &&
-            emitRes.basePrice > 0.0 &&
-            (emitRes.discountAmount ?: 0.0) > 0.0
+            (emitRes.basePrice ?: 0.0) > 0.0 && emitEffectiveDiscountAmount > 0.0
         ) {
-            ((emitRes.discountAmount ?: 0.0) / emitRes.basePrice) * 100.0
+            (emitEffectiveDiscountAmount / (emitRes.basePrice ?: 0.0)) * 100.0
         } else {
             null
         }
+        val emitDiscountLabel = emitRes.discountLabel ?: if (emitDiscountPercent != null) "Reducere aplicată" else null
 
         BiletDetaliiScreen(
             destination = stationName(emitRes.exitStationId), // direct din rezervare
@@ -210,7 +216,7 @@ fun DriverReservationsScreen(
             employeeId = DriverLocalStore.getEmployeeId(),
             routeScheduleId = routeScheduleId,
             repo = repo,
-            initialDiscountLabel = emitRes.discountLabel,
+            initialDiscountLabel = emitDiscountLabel,
             initialDiscountPercent = emitDiscountPercent,
             onBack = { openEmitBiletFor = null },
             onIncasare = { openEmitBiletFor = null }
@@ -766,13 +772,20 @@ fun ReservationDetailsScreen(
             }
             DetailRow("Achitată", achitataText)
 
+            val computedDiscountAmount = when {
+                (reservation.discountAmount ?: 0.0) > 0.0 -> reservation.discountAmount ?: 0.0
+                (reservation.basePrice ?: 0.0) > 0.0 && (reservation.finalPrice ?: 0.0) >= 0.0 -> {
+                    ((reservation.basePrice ?: 0.0) - (reservation.finalPrice ?: 0.0)).coerceAtLeast(0.0)
+                }
+                else -> 0.0
+            }
             val reducereText = when {
-                reservation.discountLabel != null && reservation.discountAmount != null ->
-                    "${reservation.discountLabel} (-${"%.2f".format(reservation.discountAmount)} lei)"
+                reservation.discountLabel != null && computedDiscountAmount > 0.0 ->
+                    "${reservation.discountLabel} (-${"%.2f".format(computedDiscountAmount)} lei)"
                 reservation.discountLabel != null ->
                     reservation.discountLabel!!
-                reservation.discountAmount != null ->
-                    "-${"%.2f".format(reservation.discountAmount)} lei"
+                computedDiscountAmount > 0.0 ->
+                    "Reducere aplicată (-${"%.2f".format(computedDiscountAmount)} lei)"
                 else -> "—"
             }
             DetailRow("Reducere", reducereText)
