@@ -911,15 +911,25 @@ export default function ReservationPage({ userRole, user }) {
   const [showMoveToOtherTrip, setShowMoveToOtherTrip] = useState(false);
   const [moveToOtherTripData, setMoveToOtherTripData] = useState(null);
 
-  const drawSeatMapCanvas = useCallback((driverName = '') => {
+  const drawSeatMapCanvas = useCallback((driverName = '', options = {}) => {
     if (!Array.isArray(seats) || seats.length === 0) {
       return null;
     }
 
-    const seatWidth = isWideView ? wideSeatSize.width : 150;
-    const seatHeight = isWideView ? wideSeatSize.height : 130;
-    const baseSeatTextSize = Number(isWideView ? seatTextSizeWide : seatTextSizeNarrow) || 11;
-    const seatTextColor = (isWideView ? seatTextColorWide : seatTextColorNarrow) || '#ffffff';
+    const {
+      forceSeatWidth,
+      forceSeatHeight,
+      forceTextSize,
+      forceTextColor,
+      forceShowObservations = false,
+      monochrome = false,
+      includeDriverInHeader = false,
+    } = options;
+
+    const seatWidth = Number(forceSeatWidth) || (isWideView ? wideSeatSize.width : 150);
+    const seatHeight = Number(forceSeatHeight) || (isWideView ? wideSeatSize.height : 130);
+    const baseSeatTextSize = Number(forceTextSize) || Number(isWideView ? seatTextSizeWide : seatTextSizeNarrow) || 11;
+    const seatTextColor = forceTextColor || (isWideView ? seatTextColorWide : seatTextColorNarrow) || '#ffffff';
 
     const nameFontPrimary = `600 ${baseSeatTextSize + 1}px "Inter", sans-serif`;
     const nameFontSecondary = `600 ${baseSeatTextSize + 1}px "Inter", sans-serif`;
@@ -949,7 +959,7 @@ export default function ReservationPage({ userRole, user }) {
       return null;
     }
 
-    ctx.fillStyle = '#f3f4f6';
+    ctx.fillStyle = monochrome ? '#ffffff' : '#f3f4f6';
     ctx.fillRect(0, 0, totalWidth, totalHeight);
 
     // ── HEADER EXPORT (stânga sus)
@@ -964,6 +974,12 @@ export default function ReservationPage({ userRole, user }) {
     const headerMain = `${format(selectedDate, 'dd.MM.yyyy')}, ${selectedRoute?.name || ''}, ${selectedSchedule?.direction?.toUpperCase() || ''} ${selectedSchedule?.departure || ''}`;
     ctx.fillText(headerMain, headerPadding, headerY);
     headerY += 20;
+
+    if (includeDriverInHeader && driverName) {
+      ctx.font = '500 14px "Inter", sans-serif';
+      ctx.fillText(`Șofer: ${driverName}`, headerPadding, headerY);
+      headerY += 18;
+    }
 
 
 
@@ -1054,7 +1070,9 @@ export default function ReservationPage({ userRole, user }) {
       const isMoveSource = moveSourceSeat?.id === seat.id;
 
       let fillColor = baseColors.available;
-      if (isServiceSeat) {
+      if (monochrome) {
+        fillColor = '#ffffff';
+      } else if (isServiceSeat) {
         fillColor = baseColors.driver;
       } else if (status === 'full') {
         fillColor = baseColors.full;
@@ -1070,14 +1088,14 @@ export default function ReservationPage({ userRole, user }) {
       ctx.fillStyle = fillColor;
       ctx.fill();
 
-      if (isSelected || isMoveSource) {
+      if (isSelected || isMoveSource || monochrome) {
         ctx.lineWidth = 4;
-        ctx.strokeStyle = isMoveSource ? '#facc15' : '#fef3c7';
+        ctx.strokeStyle = monochrome ? '#000000' : isMoveSource ? '#facc15' : '#fef3c7';
         ctx.stroke();
       }
 
       ctx.save();
-      ctx.fillStyle = 'rgba(255,255,255,0.18)';
+      ctx.fillStyle = monochrome ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.18)';
       ctx.font = '800 64px "Inter", sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
@@ -1106,7 +1124,7 @@ export default function ReservationPage({ userRole, user }) {
       };
 
       const writeObservation = (text) => {
-        if (!showSeatObservations || !text) return;
+        if (!(forceShowObservations || showSeatObservations) || !text) return;
         const lines = String(text).split(/\r?\n/);
         ctx.fillStyle = seatTextColor;
         ctx.font = smallFont;
@@ -1188,7 +1206,7 @@ export default function ReservationPage({ userRole, user }) {
         });
       }
 
-      if (heldByOther) {
+      if (heldByOther && !monochrome) {
         ctx.fillStyle = 'rgba(0,0,0,0.45)';
         ctx.fillRect(x, y, seatWidth, seatHeight);
         ctx.fillStyle = '#ffffff';
@@ -1252,6 +1270,74 @@ export default function ReservationPage({ userRole, user }) {
       }
     },
     [drawSeatMapCanvas, seatMapRef, seatViewMode, seats, setToastMessage, setToastType, vehicleInfo]
+  );
+
+  const handleSeatMapPrint = useCallback(
+    async (driverName = '') => {
+      if (seatViewMode !== 'grid') {
+        showToast('Tipărirea este disponibilă doar în diagrama clasică.', 'warning', 2500);
+        return;
+      }
+
+      if (!seatMapRef.current || !Array.isArray(seats) || seats.length === 0) {
+        showToast('Nu există o diagramă disponibilă pentru tipărire.', 'error', 2500);
+        return;
+      }
+
+      try {
+        setIsExportingSeatMap(true);
+        const canvas = drawSeatMapCanvas(driverName, {
+          forceSeatWidth: 195,
+          forceSeatHeight: 100,
+          forceTextSize: 15,
+          forceTextColor: '#000000',
+          forceShowObservations: true,
+          monochrome: true,
+          includeDriverInHeader: true,
+        });
+
+        if (!canvas) {
+          throw new Error('Canvas indisponibil');
+        }
+
+        const imageUrl = canvas.toDataURL('image/png');
+        const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
+        if (!printWindow) {
+          showToast('Popup blocat. Permite popup-urile pentru a tipări diagrama.', 'warning', 3500);
+          return;
+        }
+
+        const title = 'Diagramă pentru tipărire';
+        printWindow.document.write(`<!doctype html>
+          <html>
+            <head>
+              <meta charset="utf-8" />
+              <title>${title}</title>
+              <style>
+                @page { size: auto; margin: 10mm; }
+                body { margin: 0; padding: 0; display: flex; justify-content: center; }
+                img { max-width: 100%; height: auto; }
+              </style>
+            </head>
+            <body>
+              <img src="${imageUrl}" alt="${title}" />
+              <script>
+                window.onload = function () {
+                  window.focus();
+                  window.print();
+                };
+              <\/script>
+            </body>
+          </html>`);
+        printWindow.document.close();
+      } catch (err) {
+        console.error('Print SeatMap error', err);
+        showToast('Tipărirea a eșuat. Încearcă din nou.', 'error', 2500);
+      } finally {
+        setIsExportingSeatMap(false);
+      }
+    },
+    [drawSeatMapCanvas, seatMapRef, seatViewMode, seats]
   );
 
 
@@ -5200,6 +5286,19 @@ export default function ReservationPage({ userRole, user }) {
                       aria-busy={isExportingSeatMap}
                     >
                       {isExportingSeatMap ? 'Se pregătește PNG…' : 'Export PNG'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSeatMapPrint(currentDriverName)}
+                      disabled={exportButtonsDisabled}
+                      className={`px-3 py-1 rounded-full text-xs font-semibold border transition-colors ${exportButtonsDisabled
+                        ? 'bg-gray-100 text-gray-500 border-gray-200 cursor-not-allowed opacity-70'
+                        : 'bg-white text-gray-700 border-gray-300 hover:bg-gray-100'
+                        }`}
+                      title="Tipărește diagrama în format alb-negru"
+                      aria-busy={isExportingSeatMap}
+                    >
+                      {isExportingSeatMap ? 'Se pregătește tipărirea…' : 'Print diagramă'}
                     </button>
                   </div>
                 </div>
