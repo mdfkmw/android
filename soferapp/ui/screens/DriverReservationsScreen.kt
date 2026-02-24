@@ -773,12 +773,20 @@ fun ReservationDetailsScreen(
             DetailRow("Achitată", achitataText)
 
             val reducereText = when {
-                reservation.discountLabel != null && reservation.discountAmount != null ->
+                !reservation.discountLabel.isNullOrBlank() &&
+                        !reservation.promoCode.isNullOrBlank() &&
+                        reservation.discountAmount != null ->
+                    "${reservation.discountLabel} | promo ${reservation.promoCode} (-${"%.2f".format(reservation.discountAmount)} lei)"
+                !reservation.discountLabel.isNullOrBlank() && reservation.discountAmount != null ->
                     "${reservation.discountLabel} (-${"%.2f".format(reservation.discountAmount)} lei)"
-                reservation.discountLabel != null ->
+                !reservation.discountLabel.isNullOrBlank() ->
                     reservation.discountLabel!!
+                !reservation.promoCode.isNullOrBlank() && reservation.discountAmount != null ->
+                    "Promo ${reservation.promoCode} (-${"%.2f".format(reservation.discountAmount)} lei)"
+                !reservation.promoCode.isNullOrBlank() ->
+                    "Promo ${reservation.promoCode}"
                 reservation.discountAmount != null ->
-                    "-${"%.2f".format(reservation.discountAmount)} lei"
+                    "Reducere fără tip definit (-${"%.2f".format(reservation.discountAmount)} lei)"
                 else -> "—"
             }
             DetailRow("Reducere", reducereText)

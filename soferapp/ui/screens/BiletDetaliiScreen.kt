@@ -204,7 +204,8 @@ fun BiletDetaliiScreen(
                         "Promo: $initialPromoCode (-${"%.2f".format(initialDiscountAmount)} lei)"
                     !initialPromoCode.isNullOrBlank() -> "Promo: $initialPromoCode"
                     !initialDiscountLabel.isNullOrBlank() -> initialDiscountLabel
-                    else -> "Reducere activă"
+                    initialDiscountAmount != null -> "Reducere fără tip definit (-${"%.2f".format(initialDiscountAmount)} lei)"
+                    else -> "Reducere fără tip definit"
                 }
                 Text(
                     text = discountInfo,
