@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import ro.priscom.sofer.ui.data.DriverLocalStore
+import ro.priscom.sofer.ui.data.local.DiscountTypeEntity
 import ro.priscom.sofer.ui.data.local.LocalRepository
 import ro.priscom.sofer.ui.data.local.ReservationEntity
 import ro.priscom.sofer.ui.screens.SeatMapTab
@@ -48,6 +49,7 @@ fun DriverReservationsScreen(
     var selectedTab by remember { mutableStateOf(ReservationsTab.URCARI_AICI) }
     var seatMapRefreshTrigger by remember { mutableStateOf(0) }
     var hasSeatReservations by remember { mutableStateOf(false) }
+    var routeDiscounts by remember { mutableStateOf<List<DiscountTypeEntity>>(emptyList()) }
 
     // când intrăm în ecran: citim rezervările din SQLite
     LaunchedEffect(tripId) {
@@ -72,9 +74,33 @@ fun DriverReservationsScreen(
             (routeEntity?.visibleInReservations == true) ||
                     (routeEntity?.visibleOnline == true)
 
+        routeDiscounts = repo.getDiscountsForRouteSchedule(routeScheduleId)
+
         if (!hasSeatReservations && selectedTab == ReservationsTab.HARTA) {
             selectedTab = ReservationsTab.URCARI_AICI
         }
+    }
+
+    fun resolveDiscountLabel(reservation: ReservationEntity): String? {
+        if (!reservation.discountLabel.isNullOrBlank()) return reservation.discountLabel
+        val base = reservation.basePrice
+        val final = reservation.finalPrice
+        val amount = reservation.discountAmount
+
+        if (base != null && final != null && base > 0.0 && final >= 0.0 && final <= base) {
+            val percent = ((base - final) / base) * 100.0
+            routeDiscounts.firstOrNull {
+                it.type.equals("percent", ignoreCase = true) && kotlin.math.abs(it.valueOff - percent) < 0.01
+            }?.let { return it.label }
+        }
+
+        if (amount != null) {
+            routeDiscounts.firstOrNull {
+                it.type.equals("fixed", ignoreCase = true) && kotlin.math.abs(it.valueOff - amount) < 0.01
+            }?.let { return it.label }
+        }
+
+        return null
     }
 
     // funcție helper: nume stație din id
@@ -190,6 +216,7 @@ fun DriverReservationsScreen(
     if (emitRes != null) {
         val emitBasePrice = emitRes.basePrice ?: emitRes.finalPrice
         val emitDiscountAmount = emitRes.discountAmount
+        val emitDiscountLabel = resolveDiscountLabel(emitRes)
         val emitDiscountPercent = if (
             emitRes.basePrice != null &&
             emitRes.finalPrice != null &&
@@ -213,7 +240,7 @@ fun DriverReservationsScreen(
             employeeId = DriverLocalStore.getEmployeeId(),
             routeScheduleId = routeScheduleId,
             repo = repo,
-            initialDiscountLabel = emitRes.discountLabel,
+            initialDiscountLabel = emitDiscountLabel,
             initialDiscountAmount = emitDiscountAmount,
             initialPromoCode = emitRes.promoCode,
             initialFinalPrice = emitRes.finalPrice,
@@ -251,6 +278,7 @@ fun DriverReservationsScreen(
     if (sel != null) {
         ReservationDetailsScreen(
             reservation = sel,
+            resolvedDiscountLabel = resolveDiscountLabel(sel),
             seatDisplay = seatDisplay(sel.seatId),
             fromStationName = stationName(sel.boardStationId),
             toStationName = stationName(sel.exitStationId),
@@ -687,6 +715,7 @@ private fun ReservationsHistoryTab(
 @Composable
 fun ReservationDetailsScreen(
     reservation: ReservationEntity,
+    resolvedDiscountLabel: String?,
     seatDisplay: String,
     fromStationName: String,
     toStationName: String,
@@ -773,20 +802,20 @@ fun ReservationDetailsScreen(
             DetailRow("Achitată", achitataText)
 
             val reducereText = when {
-                !reservation.discountLabel.isNullOrBlank() &&
+                !resolvedDiscountLabel.isNullOrBlank() &&
                         !reservation.promoCode.isNullOrBlank() &&
                         reservation.discountAmount != null ->
-                    "${reservation.discountLabel} | promo ${reservation.promoCode} (-${"%.2f".format(reservation.discountAmount)} lei)"
-                !reservation.discountLabel.isNullOrBlank() && reservation.discountAmount != null ->
-                    "${reservation.discountLabel} (-${"%.2f".format(reservation.discountAmount)} lei)"
-                !reservation.discountLabel.isNullOrBlank() ->
-                    reservation.discountLabel!!
+                    "$resolvedDiscountLabel | promo ${reservation.promoCode} (-${"%.2f".format(reservation.discountAmount)} lei)"
+                !resolvedDiscountLabel.isNullOrBlank() && reservation.discountAmount != null ->
+                    "$resolvedDiscountLabel (-${"%.2f".format(reservation.discountAmount)} lei)"
+                !resolvedDiscountLabel.isNullOrBlank() ->
+                    resolvedDiscountLabel
                 !reservation.promoCode.isNullOrBlank() && reservation.discountAmount != null ->
                     "Promo ${reservation.promoCode} (-${"%.2f".format(reservation.discountAmount)} lei)"
                 !reservation.promoCode.isNullOrBlank() ->
                     "Promo ${reservation.promoCode}"
                 reservation.discountAmount != null ->
-                    "Reducere fără tip definit (-${"%.2f".format(reservation.discountAmount)} lei)"
+                    "Reducere (-${"%.2f".format(reservation.discountAmount)} lei)"
                 else -> "—"
             }
             DetailRow("Reducere", reducereText)
