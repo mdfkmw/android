@@ -799,21 +799,27 @@ fun AdminTabScreen(
                             }
 
                             // avem internet → validăm în backend
-                            val resp = remoteRepo.validateTripStart(
+                            val validation = remoteRepo.validateTripStart(
                                 routeId = route.id,
                                 tripId = tripId,
                                 vehicleId = selectedVehicleId
                             )
+                            val resp = validation.response
 
                             if (resp == null) {
-                                // backend oprit / nu răspunde → același popup nou
-                                offlineDialogData = OfflineDialogData(
-                                    route = route,
-                                    hour = hour,
-                                    tripId = tripId,
-                                    direction = direction,
-                                    routeScheduleId = routeScheduleId
-                                )
+                                if (validation.isConnectivityIssue) {
+                                    // backend oprit / nu răspunde → popup de offline
+                                    offlineDialogData = OfflineDialogData(
+                                        route = route,
+                                        hour = hour,
+                                        tripId = tripId,
+                                        direction = direction,
+                                        routeScheduleId = routeScheduleId
+                                    )
+                                } else {
+                                    startTripError = validation.errorMessage
+                                        ?: "Nu pot valida pornirea cursei acum."
+                                }
                                 return@launch
                             }
 
@@ -913,15 +919,16 @@ fun AdminTabScreen(
                                     return@launch
                                 }
 
-                                val resp = remoteRepo.validateTripStart(
+                                val validation = remoteRepo.validateTripStart(
                                     routeId = d.route.id,
                                     tripId = tripIdNonNull,
                                     vehicleId = vehicleIdNonNull
                                 )
+                                val resp = validation.response
 
                                 if (resp == null) {
-                                    startTripError =
-                                        "Încă nu se poate verifica mașina. Verifică din nou conexiunea la internet."
+                                    startTripError = validation.errorMessage
+                                        ?: "Încă nu se poate verifica mașina. Încearcă din nou."
                                     offlineDialogData = null
                                     return@launch
                                 }

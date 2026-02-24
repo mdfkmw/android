@@ -11,6 +11,14 @@ data class LoginAttemptResult(
     val httpCode: Int? = null
 )
 
+
+data class TripStartValidationResult(
+    val response: ValidateTripStartResponse? = null,
+    val errorMessage: String? = null,
+    val isConnectivityIssue: Boolean = false,
+    val httpCode: Int? = null
+)
+
 class RemoteRepository {
 
     suspend fun login(identifier: String, password: String): LoginAttemptResult {
@@ -88,18 +96,36 @@ class RemoteRepository {
         routeId: Int,
         tripId: Int?,
         vehicleId: Int
-    ): ValidateTripStartResponse? {
+    ): TripStartValidationResult {
         return try {
-            BackendApi.service.validateTripStart(
+            val response = BackendApi.service.validateTripStart(
                 ValidateTripStartRequest(
                     routeId = routeId,
                     tripId = tripId,
                     vehicleId = vehicleId
                 )
             )
+            TripStartValidationResult(response = response)
+        } catch (e: HttpException) {
+            val rawError = e.response()?.errorBody()?.string().orEmpty()
+            val parsedError = parseBackendError(rawError)
+            val message = when (e.code()) {
+                401 -> "Sesiunea a expirat sau nu ești autentificat. Reintră în aplicație."
+                else -> parsedError
+                    ?: "Nu pot valida pornirea cursei (${e.code()}). Încearcă din nou."
+            }
+
+            Log.e("RemoteRepository", "validateTripStart HTTP ${e.code()} - $message")
+            TripStartValidationResult(
+                errorMessage = message,
+                httpCode = e.code()
+            )
         } catch (e: Exception) {
             Log.e("RemoteRepository", "validateTripStart error", e)
-            null
+            TripStartValidationResult(
+                errorMessage = "Nu mă pot conecta la server pentru validarea cursei.",
+                isConnectivityIssue = true
+            )
         }
     }
     suspend fun attachDriverVehicle(
