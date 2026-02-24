@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.location.Location
 import android.location.LocationListener
 import android.location.LocationManager
+import android.location.LocationProvider
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 
@@ -80,6 +81,7 @@ fun MainTabsScreen(
 
     // stația curentă (calculată din GPS + geofence)
     var currentStopName by remember { mutableStateOf<String?>(null) }
+    var manualBypassStopName by rememberSaveable { mutableStateOf<String?>(null) }
 
     // stare persistentă între taburi: cursă pornită / îmbarcare pornită / selecție auto
     var tripStarted by rememberSaveable { mutableStateOf(false) }
@@ -160,6 +162,29 @@ fun MainTabsScreen(
                         currentLocation = location
                         gpsStatus = "GPS: ON"
                     }
+
+                    @Suppress("DEPRECATION")
+                    override fun onStatusChanged(provider: String?, status: Int, extras: android.os.Bundle?) {
+                        if (provider == LocationManager.GPS_PROVIDER) {
+                            if (status == LocationProvider.OUT_OF_SERVICE || status == LocationProvider.TEMPORARILY_UNAVAILABLE) {
+                                currentLocation = null
+                                gpsStatus = "GPS: OFF"
+                            }
+                        }
+                    }
+
+                    override fun onProviderDisabled(provider: String) {
+                        if (provider == LocationManager.GPS_PROVIDER) {
+                            currentLocation = null
+                            gpsStatus = "GPS: OFF"
+                        }
+                    }
+
+                    override fun onProviderEnabled(provider: String) {
+                        if (provider == LocationManager.GPS_PROVIDER) {
+                            gpsStatus = "GPS: căutare sateliți…"
+                        }
+                    }
                 }
 
                 try {
@@ -180,6 +205,13 @@ fun MainTabsScreen(
                     }
                 }
             }
+        }
+    }
+
+    LaunchedEffect(currentLocation) {
+        if (currentLocation == null) {
+            gpsStatus = "GPS: OFF"
+            autoSelected = false
         }
     }
 
@@ -231,6 +263,20 @@ fun MainTabsScreen(
 
 
 
+    val gpsHasSignal = currentLocation != null
+    val gpsBypassActive = gpsHasSignal && !autoSelected
+    val effectiveStopName = if (gpsBypassActive) {
+        manualBypassStopName ?: currentStopName
+    } else {
+        currentStopName
+    }
+    val statusGpsText = when {
+        gpsStatus.startsWith("GPS: fără permisiune") -> gpsStatus
+        !gpsHasSignal -> "GPS: OFF"
+        gpsBypassActive -> "GPS: BYPASS"
+        else -> gpsStatus
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -252,9 +298,10 @@ fun MainTabsScreen(
         bottomBar = {
             StatusBar(
                 kasaStatus = kasaStatus,
-                gpsStatus = gpsStatus,
+                gpsStatus = statusGpsText,
                 netStatus = netStatus,
-                batteryStatus = batteryStatus
+                batteryStatus = batteryStatus,
+                gpsBypassActive = gpsBypassActive || !gpsHasSignal
             )
         }
     ) { innerPadding ->
@@ -302,13 +349,13 @@ fun MainTabsScreen(
 
 
                 1 -> OperatiiTabScreen(
-                    currentStopName = currentStopName,
+                    currentStopName = effectiveStopName,
                     stations = stationsList,
                     loggedIn = loggedIn,
                     tripStarted = tripStarted,
                     boardingStarted = boardingStarted,
                     autoSelected = autoSelected,
-                    gpsHasSignal = currentLocation != null,
+                    gpsHasSignal = gpsHasSignal,
                     routeId = currentRouteId,
                     routeScheduleId = currentRouteScheduleId,
                     tripId = currentTripId,               // 🆕 trimitem trip-ul curent
@@ -317,6 +364,12 @@ fun MainTabsScreen(
                     onAutoSelectedChange = { checked ->
                         autoSelectedTouched = true
                         autoSelected = checked
+                        if (checked) {
+                            manualBypassStopName = null
+                        }
+                    },
+                    onManualDepartureStationSelected = { stationName ->
+                        manualBypassStopName = stationName
                     },
                     onStartBoarding = {
                         boardingStarted = true
@@ -1067,6 +1120,7 @@ fun OperatiiTabScreen(
     tripVehicleId: Int?,             // 🆕 vehiculul folosit pe cursă
     repo: LocalRepository,
     onAutoSelectedChange: (Boolean) -> Unit,
+    onManualDepartureStationSelected: (String) -> Unit,
     onStartBoarding: () -> Unit
 ) {
 
@@ -1077,6 +1131,7 @@ fun OperatiiTabScreen(
     val inactiveText = Color(0xFF444444)
 
     var showDestinations by remember { mutableStateOf(false) }
+    var showDepartureStations by remember { mutableStateOf(false) }
     var selectedDestination by remember { mutableStateOf<String?>(null) }
     var showStartBoardingConfirm by remember { mutableStateOf(false) }
     var showTicketHistory by remember { mutableStateOf(false) }
@@ -1132,7 +1187,7 @@ fun OperatiiTabScreen(
     //  - activ dacă: NU există semnal GPS SAU bifa de selecție auto NU e bifată
     //  - dezactivat numai când: există GPS și bifa e bifată
     val canPlecare =
-        loggedIn && (!gpsHasSignal || !autoSelected)
+        loggedIn && tripStarted && (!gpsHasSignal || !autoSelected)
 
     val canEmiteBilet =
         loggedIn && tripStarted && boardingStarted
@@ -1149,7 +1204,7 @@ fun OperatiiTabScreen(
     // „Selecție auto”:
     //  - bifa este activă doar dacă există GPS și șoferul e logat
     val canSelectAuto =
-        loggedIn && gpsHasSignal
+        loggedIn && tripStarted && gpsHasSignal
 
 
     when {
@@ -1168,6 +1223,17 @@ fun OperatiiTabScreen(
                 routeScheduleId = routeScheduleId,
                 repo = repo,
                 onBack = { showReservations = false }
+            )
+        }
+
+        showDepartureStations -> {
+            EmiteBiletScreen(
+                onBack = { showDepartureStations = false },
+                onDestinationSelected = { station ->
+                    onManualDepartureStationSelected(station)
+                    showDepartureStations = false
+                },
+                stations = stations
             )
         }
 
@@ -1250,7 +1316,7 @@ fun OperatiiTabScreen(
                 // rând 1: PLECARE DIN STATIE | EMITE BILET
                 Row(Modifier.fillMaxWidth()) {
                     Button(
-                        onClick = { /* TODO: Plecare din statie (GPS) */ },
+                        onClick = { showDepartureStations = true },
                         enabled = canPlecare,
                         modifier = Modifier
                             .weight(1f)
@@ -1474,7 +1540,3 @@ fun OperatiiTabScreen(
         }
     }
 }
-
-
-
-

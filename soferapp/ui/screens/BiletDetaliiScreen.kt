@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import ro.priscom.sofer.ui.data.local.TicketLocalRepository
 import ro.priscom.sofer.ui.screens.DiscountOption
 import ro.priscom.sofer.ui.data.local.LocalRepository
+import ro.priscom.sofer.ui.data.local.StationEntity
 
 
 /**
@@ -45,7 +46,12 @@ fun BiletDetaliiScreen(
     tripVehicleId: Int? = null,
 
     routeScheduleId: Int? = null,
-    repo: ro.priscom.sofer.ui.data.local.LocalRepository? = null
+    repo: ro.priscom.sofer.ui.data.local.LocalRepository? = null,
+    initialDiscountLabel: String? = null,
+    initialDiscountAmount: Double? = null,
+    initialPromoCode: String? = null,
+    initialFinalPrice: Double? = null,
+    initialDiscountPercent: Double? = null
 )
  {
     val activeGreen = Color(0xFF5BC21E)
@@ -58,24 +64,100 @@ fun BiletDetaliiScreen(
 
     // dacă avem preț din listele reale, îl folosim; altfel 0 intern
     var pretBrut by remember(ticketPrice) { mutableStateOf(ticketPrice ?: 0.0) }
+    var hasPrice by remember(ticketPrice) { mutableStateOf(ticketPrice != null) }
     var dusIntors by remember { mutableStateOf(false) }
     var quantity by remember { mutableStateOf(1) }
-    var selectedDiscount by remember { mutableStateOf<DiscountOption?>(null) }
+    var hasInitialReservationDiscount by remember(initialDiscountAmount, initialFinalPrice) {
+        mutableStateOf((initialDiscountAmount ?: 0.0) > 0.0 || (ticketPrice != null && initialFinalPrice != null && initialFinalPrice < ticketPrice))
+    }
+    var selectedDiscount by remember(initialDiscountLabel, initialDiscountPercent) {
+        mutableStateOf(
+            if (!initialDiscountLabel.isNullOrBlank() && (initialDiscountPercent ?: 0.0) > 0.0) {
+                DiscountOption(
+                    id = null,
+                    label = initialDiscountLabel,
+                    percent = initialDiscountPercent ?: 0.0
+                )
+            } else {
+                null
+            }
+        )
+    }
     var showReduceri by remember { mutableStateOf(false) }
     var selectedPaymentMethod by remember { mutableStateOf("cash") } // deocamdată doar cash
+    var routeStations by remember { mutableStateOf<List<StationEntity>>(emptyList()) }
+    var selectedToStationId by remember(toStationId) { mutableStateOf(toStationId) }
+    var seatDisplay by remember { mutableStateOf("-") }
 
-    // reducerea și totalul au sens doar dacă avem preț
-    val discountFactor = if (ticketPrice != null) {
-        1 - (selectedDiscount?.percent ?: 0.0) / 100.0
+    LaunchedEffect(ticketPrice, initialFinalPrice, initialDiscountAmount) {
+        if (ticketPrice == null && initialFinalPrice != null) {
+            hasPrice = true
+            pretBrut = (initialFinalPrice + (initialDiscountAmount ?: 0.0)).coerceAtLeast(0.0)
+        }
+    }
+
+    LaunchedEffect(routeScheduleId, repo) {
+        val localRepo = repo ?: return@LaunchedEffect
+        routeStations = localRepo.getStationsForRouteSchedule(routeScheduleId)
+
+    }
+
+    LaunchedEffect(seatId, repo) {
+        val localRepo = repo ?: return@LaunchedEffect
+        seatDisplay = localRepo.getSeatLabelById(seatId) ?: if (seatId != null) seatId.toString() else "-"
+    }
+
+    LaunchedEffect(routeScheduleId, fromStationId, selectedToStationId, repo) {
+        val localRepo = repo ?: return@LaunchedEffect
+        if (routeScheduleId == null || fromStationId == null || selectedToStationId == null) return@LaunchedEffect
+
+        val newBase = localRepo.getBasePriceForRouteScheduleSegment(
+            routeScheduleId = routeScheduleId,
+            fromStationId = fromStationId,
+            toStationId = selectedToStationId
+        )
+        if (newBase != null) {
+            pretBrut = newBase
+            hasPrice = true
+        }
+    }
+
+    val destinationOptions = remember(routeStations, fromStationId) {
+        val boardIndex = routeStations.indexOfFirst { it.id == fromStationId }
+        if (boardIndex == -1 || boardIndex == routeStations.size - 1) {
+            emptyList()
+        } else {
+            routeStations.drop(boardIndex + 1)
+        }
+    }
+
+    val destinationName = destinationOptions.firstOrNull { it.id == selectedToStationId }?.name ?: destination
+
+    val baseTotal = if (hasPrice) {
+        pretBrut * quantity * (if (dusIntors) 2 else 1)
     } else {
         0.0
     }
-    val finalPrice = if (ticketPrice != null) {
-        pretBrut * quantity * (if (dusIntors) 2 else 1) * discountFactor
+
+    val selectedDiscountAmount = if (hasPrice && selectedDiscount != null) {
+        (baseTotal * ((selectedDiscount?.percent ?: 0.0) / 100.0)).coerceAtLeast(0.0)
     } else {
         0.0
     }
-    val canIncasare = ticketPrice != null
+
+    val initialDiscountValue = (initialDiscountAmount ?: 0.0).coerceAtLeast(0.0)
+    val finalPriceFromInitial = initialFinalPrice?.coerceAtLeast(0.0)
+
+    val appliedDiscountAmount = when {
+        selectedDiscount != null -> selectedDiscountAmount
+        hasInitialReservationDiscount && !dusIntors && quantity == 1 && finalPriceFromInitial != null ->
+            (baseTotal - finalPriceFromInitial).coerceAtLeast(0.0)
+        hasInitialReservationDiscount && !dusIntors && quantity == 1 -> initialDiscountValue
+        else -> 0.0
+    }
+
+    val finalPrice = (baseTotal - appliedDiscountAmount).coerceAtLeast(0.0)
+    val canIncasare = hasPrice
 
     // ecranul de reduceri
      if (showReduceri) {
@@ -88,6 +170,7 @@ fun BiletDetaliiScreen(
                  onBack = { showReduceri = false },
                  onSelect = { opt ->
                      selectedDiscount = opt
+                     hasInitialReservationDiscount = false
                      showReduceri = false
                  }
              )
@@ -111,12 +194,17 @@ fun BiletDetaliiScreen(
                 .background(Color.White)
                 .padding(8.dp)
         ) {
-            Text("CURSA: TUR 06:00 - TUR", fontSize = 14.sp)
-            Text(
-                "IMBARCARE: ${currentStopName ?: "STATIE CURENTA"}",
-                fontSize = 14.sp
+            RouteLineWithDestinationButton(
+                boardingName = currentStopName ?: "STATIE CURENTA",
+                options = destinationOptions,
+                selectedId = selectedToStationId,
+                fallbackName = destinationName,
+                onSelect = { selectedToStationId = it }
             )
-            Text("DEBARCARE: $destination", fontSize = 14.sp)
+
+            if (seatId != null) {
+                Text("LOC: $seatDisplay", fontSize = 14.sp)
+            }
 
             Spacer(Modifier.height(4.dp))
 
@@ -125,7 +213,7 @@ fun BiletDetaliiScreen(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = if (ticketPrice != null) {
+                    text = if (hasPrice) {
                         "PRET BRUT: %.2f".format(pretBrut)
                     } else {
                         "PRET BRUT: -"
@@ -141,7 +229,7 @@ fun BiletDetaliiScreen(
                         .padding(horizontal = 12.dp, vertical = 6.dp)
                 ) {
                     Text(
-                        text = if (ticketPrice != null) {
+                        text = if (hasPrice) {
                             "FINAL %.2f".format(finalPrice)
                         } else {
                             "FINAL: -"
@@ -156,6 +244,25 @@ fun BiletDetaliiScreen(
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = selectedDiscount!!.label,
+                    fontSize = 14.sp,
+                    color = Color.Black
+                )
+            } else if (hasInitialReservationDiscount) {
+                Spacer(Modifier.height(4.dp))
+                val discountInfo = when {
+                    !initialDiscountLabel.isNullOrBlank() && !initialPromoCode.isNullOrBlank() && initialDiscountAmount != null ->
+                        "$initialDiscountLabel | promo: $initialPromoCode (-${"%.2f".format(initialDiscountAmount)} lei)"
+                    !initialDiscountLabel.isNullOrBlank() && initialDiscountAmount != null ->
+                        "$initialDiscountLabel (-${"%.2f".format(initialDiscountAmount)} lei)"
+                    !initialPromoCode.isNullOrBlank() && initialDiscountAmount != null ->
+                        "Promo: $initialPromoCode (-${"%.2f".format(initialDiscountAmount)} lei)"
+                    !initialPromoCode.isNullOrBlank() -> "Promo: $initialPromoCode"
+                    !initialDiscountLabel.isNullOrBlank() -> initialDiscountLabel
+                    initialDiscountAmount != null -> "Reducere (-${"%.2f".format(initialDiscountAmount)} lei)"
+                    else -> "Reducere"
+                }
+                Text(
+                    text = discountInfo,
                     fontSize = 14.sp,
                     color = Color.Black
                 )
@@ -200,7 +307,6 @@ fun BiletDetaliiScreen(
             }
         }
 
-        // zona mov mare (poți adăuga detalii suplimentare ulterior)
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -265,7 +371,7 @@ fun BiletDetaliiScreen(
                             tripId = tripId,
                             tripVehicleId = tripVehicleId,
                             fromStationId = fromStationId,
-                            toStationId = toStationId,
+                            toStationId = selectedToStationId ?: toStationId,
                             seatId = null,                     // curse scurte -> fără loc
                             priceListId = priceListId,
                             discountTypeId = selectedDiscount?.id,
@@ -286,6 +392,55 @@ fun BiletDetaliiScreen(
                 )
             ) {
                 Text("INCAZARE")
+            }
+        }
+    }
+}
+
+@Composable
+private fun RouteLineWithDestinationButton(
+    boardingName: String,
+    options: List<StationEntity>,
+    selectedId: Int?,
+    fallbackName: String,
+    onSelect: (Int) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val selectedName = options.firstOrNull { it.id == selectedId }?.name ?: fallbackName
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        Text(text = boardingName, fontSize = 14.sp)
+        Text(text = "→", fontSize = 14.sp)
+
+        if (options.isEmpty()) {
+            Text(text = selectedName, fontSize = 14.sp)
+        } else {
+            Box {
+                Button(
+                    onClick = { expanded = true },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFEFEFEF)),
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp)
+                ) {
+                    Text(text = selectedName, color = Color.Black, fontSize = 13.sp)
+                }
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false }
+                ) {
+                    options.forEach { station ->
+                        DropdownMenuItem(
+                            text = { Text(station.name) },
+                            onClick = {
+                                onSelect(station.id)
+                                expanded = false
+                            }
+                        )
+                    }
+                }
             }
         }
     }
