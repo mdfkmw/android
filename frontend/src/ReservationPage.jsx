@@ -924,6 +924,7 @@ export default function ReservationPage({ userRole, user }) {
       forceShowObservations = false,
       monochrome = false,
       includeDriverInHeader = false,
+      expandToA4Height = false,
     } = options;
 
     const seatWidth = Number(forceSeatWidth) || (isWideView ? wideSeatSize.width : 150);
@@ -938,7 +939,8 @@ export default function ReservationPage({ userRole, user }) {
     const italicFont = `italic ${baseSeatTextSize}px "Inter", sans-serif`;
 
 
-    const seatGap = 5;
+    const defaultSeatGap = 5;
+    let seatGap = defaultSeatGap;
     const padding = 16;
     const seatPadding = 10;
     const maxCol = Math.max(...seats.map((s) => s.seat_col || 1));
@@ -946,6 +948,20 @@ export default function ReservationPage({ userRole, user }) {
     const totalWidth = seatWidth * maxCol + seatGap * (maxCol - 1) + padding * 2;
     const headerHeight = 28; // spațiu pentru antet (data/ruta/sens/ora)
     const seatAreaTop = padding + headerHeight;
+
+    const baseTotalHeight =
+      seatAreaTop + (seatHeight * (maxRow + 1)) + (seatGap * maxRow) + padding;
+
+    // Pentru print A4: întindem vertical spațiul dintre rânduri astfel încât diagrama
+    // să folosească toată pagina pe înălțime (mai ales la microbuze cu puține rânduri).
+    if (expandToA4Height && maxRow > 0) {
+      const a4PortraitRatio = Math.SQRT2; // h / w ≈ 1.414
+      const targetHeight = Math.round(totalWidth * a4PortraitRatio);
+      if (targetHeight > baseTotalHeight) {
+        const extraHeight = targetHeight - baseTotalHeight;
+        seatGap += extraHeight / maxRow;
+      }
+    }
 
     const totalHeight =
       seatAreaTop + (seatHeight * (maxRow + 1)) + (seatGap * maxRow) + padding;
@@ -1294,6 +1310,7 @@ export default function ReservationPage({ userRole, user }) {
           forceShowObservations: true,
           monochrome: true,
           includeDriverInHeader: true,
+          expandToA4Height: true,
         });
 
         if (!canvas) {
@@ -1321,9 +1338,9 @@ export default function ReservationPage({ userRole, user }) {
               <meta charset="utf-8" />
               <title>${title}</title>
               <style>
-                @page { size: auto; margin: 10mm; }
+                @page { size: A4 portrait; margin: 0; }
                 body { margin: 0; padding: 0; display: flex; justify-content: center; }
-                img { max-width: 100%; height: auto; }
+                img { width: 100vw; height: 100vh; object-fit: fill; }
               </style>
             </head>
             <body>
