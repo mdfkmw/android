@@ -161,6 +161,19 @@ fun MainTabsScreen(
                         currentLocation = location
                         gpsStatus = "GPS: ON"
                     }
+
+                    override fun onProviderDisabled(provider: String) {
+                        if (provider == LocationManager.GPS_PROVIDER) {
+                            currentLocation = null
+                            gpsStatus = "GPS: OFF"
+                        }
+                    }
+
+                    override fun onProviderEnabled(provider: String) {
+                        if (provider == LocationManager.GPS_PROVIDER) {
+                            gpsStatus = "GPS: căutare sateliți…"
+                        }
+                    }
                 }
 
                 try {
@@ -1151,7 +1164,7 @@ fun OperatiiTabScreen(
     //  - activ dacă: NU există semnal GPS SAU bifa de selecție auto NU e bifată
     //  - dezactivat numai când: există GPS și bifa e bifată
     val canPlecare =
-        loggedIn && (!gpsHasSignal || !autoSelected)
+        loggedIn && tripStarted && (!gpsHasSignal || !autoSelected)
 
     val canEmiteBilet =
         loggedIn && tripStarted && boardingStarted
@@ -1168,7 +1181,7 @@ fun OperatiiTabScreen(
     // „Selecție auto”:
     //  - bifa este activă doar dacă există GPS și șoferul e logat
     val canSelectAuto =
-        loggedIn && gpsHasSignal
+        loggedIn && tripStarted && gpsHasSignal
 
 
     when {
@@ -1504,5 +1517,4 @@ fun OperatiiTabScreen(
         }
     }
 }
-
 
