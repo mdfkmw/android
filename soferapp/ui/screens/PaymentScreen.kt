@@ -38,10 +38,16 @@ fun PaymentScreen(
     var discountList by remember { mutableStateOf<List<DiscountTypeEntity>>(emptyList()) }
     var selectedDiscount by remember { mutableStateOf<DiscountTypeEntity?>(null) }
     var descriptionText by remember { mutableStateOf("") }
+    var seatDisplay by remember { mutableStateOf(reservation.seatId?.toString() ?: "-") }
 
     // 1) Încărcăm stațiile pentru route_schedule-ul curent
     LaunchedEffect(tripRouteScheduleId) {
         routeStations = repo.getStationsForRouteSchedule(tripRouteScheduleId)
+    }
+
+    LaunchedEffect(reservation.seatId) {
+        val label = repo.getSeatLabelById(reservation.seatId)
+        seatDisplay = if (!label.isNullOrBlank()) label else (reservation.seatId?.toString() ?: "-")
     }
 
     // 2) Încărcăm reducerile pentru cursa curentă
@@ -135,7 +141,7 @@ fun PaymentScreen(
 
         Text("Încasare pentru rezervarea:", style = MaterialTheme.typography.titleMedium)
         Spacer(Modifier.height(6.dp))
-        Text("${reservation.personName} – loc ${reservation.seatId ?: "-"}")
+        Text("${reservation.personName} – loc $seatDisplay")
 
         Spacer(Modifier.height(12.dp))
 
