@@ -47,6 +47,9 @@ fun BiletDetaliiScreen(
     routeScheduleId: Int? = null,
     repo: ro.priscom.sofer.ui.data.local.LocalRepository? = null,
     initialDiscountLabel: String? = null,
+    initialDiscountAmount: Double? = null,
+    initialPromoCode: String? = null,
+    initialFinalPrice: Double? = null,
     initialDiscountPercent: Double? = null
 )
  {
@@ -62,6 +65,9 @@ fun BiletDetaliiScreen(
     var pretBrut by remember(ticketPrice) { mutableStateOf(ticketPrice ?: 0.0) }
     var dusIntors by remember { mutableStateOf(false) }
     var quantity by remember { mutableStateOf(1) }
+    var hasInitialReservationDiscount by remember(initialDiscountAmount, initialFinalPrice) {
+        mutableStateOf((initialDiscountAmount ?: 0.0) > 0.0 || (ticketPrice != null && initialFinalPrice != null && initialFinalPrice < ticketPrice))
+    }
     var selectedDiscount by remember(initialDiscountLabel, initialDiscountPercent) {
         mutableStateOf(
             if (!initialDiscountLabel.isNullOrBlank() && (initialDiscountPercent ?: 0.0) > 0.0) {
@@ -78,17 +84,30 @@ fun BiletDetaliiScreen(
     var showReduceri by remember { mutableStateOf(false) }
     var selectedPaymentMethod by remember { mutableStateOf("cash") } // deocamdată doar cash
 
-    // reducerea și totalul au sens doar dacă avem preț
-    val discountFactor = if (ticketPrice != null) {
-        1 - (selectedDiscount?.percent ?: 0.0) / 100.0
+    val baseTotal = if (ticketPrice != null) {
+        pretBrut * quantity * (if (dusIntors) 2 else 1)
     } else {
         0.0
     }
-    val finalPrice = if (ticketPrice != null) {
-        pretBrut * quantity * (if (dusIntors) 2 else 1) * discountFactor
+
+    val selectedDiscountAmount = if (ticketPrice != null && selectedDiscount != null) {
+        (baseTotal * ((selectedDiscount?.percent ?: 0.0) / 100.0)).coerceAtLeast(0.0)
     } else {
         0.0
     }
+
+    val initialDiscountValue = (initialDiscountAmount ?: 0.0).coerceAtLeast(0.0)
+    val finalPriceFromInitial = initialFinalPrice?.coerceAtLeast(0.0)
+
+    val appliedDiscountAmount = when {
+        selectedDiscount != null -> selectedDiscountAmount
+        hasInitialReservationDiscount && !dusIntors && quantity == 1 && finalPriceFromInitial != null ->
+            (baseTotal - finalPriceFromInitial).coerceAtLeast(0.0)
+        hasInitialReservationDiscount && !dusIntors && quantity == 1 -> initialDiscountValue
+        else -> 0.0
+    }
+
+    val finalPrice = (baseTotal - appliedDiscountAmount).coerceAtLeast(0.0)
     val canIncasare = ticketPrice != null
 
     // ecranul de reduceri
@@ -102,6 +121,7 @@ fun BiletDetaliiScreen(
                  onBack = { showReduceri = false },
                  onSelect = { opt ->
                      selectedDiscount = opt
+                     hasInitialReservationDiscount = false
                      showReduceri = false
                  }
              )
@@ -170,6 +190,24 @@ fun BiletDetaliiScreen(
                 Spacer(Modifier.height(4.dp))
                 Text(
                     text = selectedDiscount!!.label,
+                    fontSize = 14.sp,
+                    color = Color.Black
+                )
+            } else if (hasInitialReservationDiscount) {
+                Spacer(Modifier.height(4.dp))
+                val discountInfo = when {
+                    !initialDiscountLabel.isNullOrBlank() && !initialPromoCode.isNullOrBlank() && initialDiscountAmount != null ->
+                        "$initialDiscountLabel | promo: $initialPromoCode (-${"%.2f".format(initialDiscountAmount)} lei)"
+                    !initialDiscountLabel.isNullOrBlank() && initialDiscountAmount != null ->
+                        "$initialDiscountLabel (-${"%.2f".format(initialDiscountAmount)} lei)"
+                    !initialPromoCode.isNullOrBlank() && initialDiscountAmount != null ->
+                        "Promo: $initialPromoCode (-${"%.2f".format(initialDiscountAmount)} lei)"
+                    !initialPromoCode.isNullOrBlank() -> "Promo: $initialPromoCode"
+                    !initialDiscountLabel.isNullOrBlank() -> initialDiscountLabel
+                    else -> "Reducere activă"
+                }
+                Text(
+                    text = discountInfo,
                     fontSize = 14.sp,
                     color = Color.Black
                 )
