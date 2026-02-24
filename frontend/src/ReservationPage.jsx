@@ -1303,7 +1303,7 @@ export default function ReservationPage({ userRole, user }) {
         const imageUrl = canvas.toDataURL('image/png');
         const printWindow = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=900');
         if (!printWindow) {
-          showToast('Popup blocat. Permite popup-urile pentru a tipări diagrama.', 'warning', 3500);
+          showToast('Popup blocat. Permite popup-urile pentru a tipări diagrama. În Microsoft Edge: click pe iconița popup blocat din bara de adrese → Always allow pop-ups from this site → Done.', 'warning', 9000);
           return;
         }
 
