@@ -25,6 +25,7 @@ import ro.priscom.sofer.ui.models.Vehicle
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import ro.priscom.sofer.ui.data.DriverLocalStore
+import kotlinx.coroutines.delay
 
 
 @Composable
@@ -37,21 +38,36 @@ fun SelectVehicleScreen(
 
     var vehicles by remember { mutableStateOf<List<Vehicle>>(emptyList()) }
     var error by remember { mutableStateOf<String?>(null) }
+    var isLoading by remember { mutableStateOf(false) }
+    var retryTrigger by remember { mutableStateOf(0) }
 
-    LaunchedEffect(Unit) {
+    suspend fun loadVehicles(waitForSync: Boolean) {
+        isLoading = true
+        error = null
+
         try {
             val operatorId = DriverLocalStore.getOperatorId()
 
             if (operatorId == null) {
                 vehicles = emptyList()
                 error = "Operatorul șoferului nu este cunoscut"
-                return@LaunchedEffect
+                return
             }
 
-            val localVehicles: List<VehicleEntity> =
-                repo.getVehiclesForOperator(operatorId)
+            val maxAttempts = if (waitForSync) 10 else 1
+            var found: List<VehicleEntity> = emptyList()
 
-            vehicles = localVehicles
+            repeat(maxAttempts) { idx ->
+                found = repo.getVehiclesForOperator(operatorId)
+                if (found.isNotEmpty()) return@repeat
+
+                // după primul login, sync-ul poate fi încă în curs
+                if (waitForSync && idx < maxAttempts - 1) {
+                    delay(500)
+                }
+            }
+
+            vehicles = found
                 .sortedBy { it.plateNumber.lowercase() }
                 .map { v ->
                     Vehicle(
@@ -61,9 +77,19 @@ fun SelectVehicleScreen(
                     )
                 }
 
+            if (vehicles.isEmpty()) {
+                error = "Nu am găsit încă mașini pentru operator. Încearcă reîncărcare."
+            }
+
         } catch (e: Exception) {
             error = e.message ?: "Eroare la încărcarea vehiculelor"
+        } finally {
+            isLoading = false
         }
+    }
+
+    LaunchedEffect(retryTrigger) {
+        loadVehicles(waitForSync = retryTrigger == 0)
     }
 
 
@@ -84,12 +110,23 @@ fun SelectVehicleScreen(
 
             Spacer(Modifier.height(16.dp))
 
-            if (error != null) {
-                Text("Eroare: $error")
+            if (isLoading) {
+                Text("Se încarcă lista de mașini...")
                 Spacer(Modifier.height(8.dp))
             }
 
-            if (vehicles.isEmpty() && error == null) {
+            if (error != null) {
+                Text("Eroare: $error")
+                Spacer(Modifier.height(8.dp))
+
+                Button(onClick = {
+                    retryTrigger++
+                }) {
+                    Text("Reîncarcă")
+                }
+            }
+
+            if (vehicles.isEmpty() && error == null && !isLoading) {
                 Text("Nu există mașini disponibile")
             }
 

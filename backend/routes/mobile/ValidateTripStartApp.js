@@ -4,6 +4,7 @@
 const express = require('express');
 const router = express.Router();
 const db = require('../../db');
+const { requireAuth, requireRole } = require('../../middleware/auth');
 
 
 // funcție preluată din trips.js
@@ -22,6 +23,8 @@ function parseBooleanFlag(value) {
 // POST /api/mobile/validate-trip-start
 router.post(
   '/validate-trip-start',
+  requireAuth,
+  requireRole('driver'),
     async (req, res) => {
     const body = req.body || {};
     const routeId = Number(body.route_id);
@@ -92,31 +95,51 @@ router.post(
         });
       }
 
-      // curse cu rezervări → verificăm mașina principală
+      const employeeId = Number(req.user?.id) || null;
+      if (!employeeId || !Number.isInteger(employeeId)) {
+        return res.status(401).json({
+          ok: false,
+          critical: false,
+          error: 'auth required'
+        });
+      }
+
+      // curse cu rezervări → verificăm STRICT combinația:
+      // - mașina selectată există pe trip (inclusiv dubluri)
+      // - șoferul logat este asignat exact pe acel trip_vehicle
       const { rows: tv } = await db.query(
-        `SELECT vehicle_id
-           FROM trip_vehicles
-          WHERE trip_id = ?
-            AND is_primary = 1
+        `SELECT tv.id AS trip_vehicle_id
+           FROM trip_vehicles tv
+          WHERE tv.trip_id = ?
+            AND tv.vehicle_id = ?
           LIMIT 1`,
-        [tripId]
+        [tripId, vehicleId]
       );
 
       if (!tv.length) {
         return res.json({
           ok: false,
-          critical: true,
-          error: 'Pentru această cursă există rezervări, dar nu este setată nicio mașină.'
+          critical: false,
+          error: 'masina cu care te-ai logat nu e atribuita pe aceasta cursa'
         });
       }
 
-      const primaryVehicleId = tv[0].vehicle_id;
+      const tripVehicleId = Number(tv[0].trip_vehicle_id);
 
-      if (primaryVehicleId !== vehicleId) {
+      const { rows: assignmentRows } = await db.query(
+        `SELECT 1
+           FROM trip_vehicle_employees tve
+          WHERE tve.trip_vehicle_id = ?
+            AND tve.employee_id = ?
+          LIMIT 1`,
+        [tripVehicleId, employeeId]
+      );
+
+      if (!assignmentRows.length) {
         return res.json({
           ok: false,
           critical: false,
-          error: 'Mașina aleasă nu este asociată acestei curse cu rezervări.'
+          error: 'nu iti este atribuita aceasta cursa'
         });
       }
 

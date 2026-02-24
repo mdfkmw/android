@@ -685,19 +685,6 @@ router.get('/trips/:tripId/my-seatmap', requireAuth, async (req, res) => {
     let tv = tvRows?.[0];
 
     if (!tv) {
-      // Fallback: orice vehicul atașat la trip (is_primary primul)
-      const tvFallbackSql = `
-        SELECT id AS trip_vehicle_id, vehicle_id
-        FROM trip_vehicles
-        WHERE trip_id = ?
-        ORDER BY is_primary DESC, id ASC
-        LIMIT 1
-      `;
-      const { rows: tvFallbackRows } = await db.query(tvFallbackSql, [tripId]);
-      tv = tvFallbackRows?.[0];
-    }
-
-    if (!tv) {
       return res.status(200).json({ ok: false, error: 'no_vehicle_assigned_for_driver' });
     }
 
