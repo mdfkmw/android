@@ -22,6 +22,24 @@ class RemoteSyncRepository {
 
     suspend fun syncMasterData(db: AppDatabase, loggedIn: Boolean): MasterSyncResult {
         return withContext(Dispatchers.IO) {
+            val token = BackendApi.authToken
+            if (token.isNullOrBlank()) {
+                return@withContext MasterSyncResult(
+                    operators = 0,
+                    employees = 0,
+                    vehicles = 0,
+                    routes = 0,
+                    stations = 0,
+                    routeStations = 0,
+                    priceLists = 0,
+                    priceListItems = 0,
+                    discountTypes = 0,
+                    routeDiscounts = 0,
+                    routeSchedules = 0,
+                    error = "Autentificare backend lipsă/expirată (401). Fă login online și încearcă din nou sincronizarea."
+                )
+            }
+
             try {
                 // === 1. MASTER DATA EXISTENTE (operators / employees / vehicles) ===
 
@@ -308,6 +326,15 @@ class RemoteSyncRepository {
 
     // 👇 NOU: sincronizarea biletelor salvate local în tickets_local
     suspend fun syncTickets(db: AppDatabase): TicketSyncResult {
+        if (BackendApi.authToken.isNullOrBlank()) {
+            return TicketSyncResult(
+                total = 0,
+                synced = 0,
+                failed = 0,
+                error = "Autentificare backend lipsă/expirată (401)."
+            )
+        }
+
         return try {
             val ticketDao = db.ticketDao()
             val pending = ticketDao.getPendingTickets()
@@ -496,4 +523,3 @@ data class MasterSyncResult(
     val routeSchedules: Int,
     val error: String? = null
 )
-
