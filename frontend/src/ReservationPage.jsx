@@ -318,7 +318,10 @@ export default function ReservationPage({ userRole, user }) {
       setSeatMapMinZoom(1);
       setSeatMapViewportHeight(null);
       setSeatMapPan({ x: 0, y: 0 });
+      return;
     }
+
+    setShowSeatObservations(true);
   }, [selectedHour]);
 
   const clampSeatMapZoom = useCallback((value) => {
@@ -349,30 +352,35 @@ export default function ReservationPage({ userRole, user }) {
     };
   }, [isMobileViewport]);
 
+  const applySeatMapFit = useCallback(({ forceZoom = false } = {}) => {
+    const fit = recalculateSeatMapFitZoom();
+    if (!fit) return;
+
+    setSeatMapMinZoom(fit.minZoom);
+    setSeatMapViewportHeight(fit.viewportHeight);
+    setSeatMapZoom((prev) => {
+      if (forceZoom || !Number.isFinite(prev) || prev <= 1) return fit.minZoom;
+      return Math.max(prev, fit.minZoom);
+    });
+    setSeatMapPan((prev) => {
+      if (forceZoom || !Number.isFinite(prev?.x) || !Number.isFinite(prev?.y) || (prev.x === 0 && prev.y === 0)) {
+        return fit.fitPan;
+      }
+      return prev;
+    });
+  }, [recalculateSeatMapFitZoom]);
+
   useEffect(() => {
     if (!isMobileViewport || mobileWorkspaceTab !== 'map' || !selectedHour || !Array.isArray(seats) || seats.length === 0) {
       return undefined;
     }
 
     const rafId = window.requestAnimationFrame(() => {
-      const fit = recalculateSeatMapFitZoom();
-      if (!fit) return;
-      setSeatMapMinZoom(fit.minZoom);
-      setSeatMapZoom((prev) => {
-        if (!Number.isFinite(prev) || prev <= 1) return fit.minZoom;
-        return Math.max(prev, fit.minZoom);
-      });
-      setSeatMapViewportHeight(fit.viewportHeight);
-      setSeatMapPan((prev) => {
-        if (!Number.isFinite(prev?.x) || !Number.isFinite(prev?.y) || (prev.x === 0 && prev.y === 0)) {
-          return fit.fitPan;
-        }
-        return prev;
-      });
+      applySeatMapFit({ forceZoom: false });
     });
 
     return () => window.cancelAnimationFrame(rafId);
-  }, [isMobileViewport, mobileWorkspaceTab, selectedHour, seats, recalculateSeatMapFitZoom]);
+  }, [isMobileViewport, mobileWorkspaceTab, selectedHour, seats, applySeatMapFit]);
 
   const getTouchDistance = useCallback((touchA, touchB) => {
     const dx = touchA.clientX - touchB.clientX;
@@ -440,10 +448,7 @@ export default function ReservationPage({ userRole, user }) {
 
       if (nextZoom <= seatMapMinZoom + 0.01) {
         setSeatMapZoom(seatMapMinZoom);
-        const fit = recalculateSeatMapFitZoom();
-        if (fit) {
-          setSeatMapPan(fit.fitPan);
-        }
+        applySeatMapFit({ forceZoom: true });
         return;
       }
 
@@ -466,7 +471,7 @@ export default function ReservationPage({ userRole, user }) {
         y: gesture.startPan.y + (touch.clientY - gesture.startTouch.y),
       });
     }
-  }, [clampSeatMapZoom, getTouchCenter, getTouchDistance, isMobileViewport, recalculateSeatMapFitZoom, seatMapMinZoom]);
+  }, [applySeatMapFit, clampSeatMapZoom, getTouchCenter, getTouchDistance, isMobileViewport, seatMapMinZoom]);
 
   const handleSeatMapTouchEnd = useCallback((event) => {
     const touchesLeft = event?.touches?.length ?? 0;
@@ -866,8 +871,28 @@ export default function ReservationPage({ userRole, user }) {
   // ⚙️ Control pentru dimensiunile locurilor în modul lat
   const [wideSeatSize, setWideSeatSize] = useState({ width: 260, height: 150 });
   // 📝 Afișare observații direct pe diagramă
-  const [showSeatObservations, setShowSeatObservations] = useState(false);
+  const [showSeatObservations, setShowSeatObservations] = useState(true);
 
+  useEffect(() => {
+    if (!isMobileViewport || mobileWorkspaceTab !== 'map' || !selectedHour || seatViewMode !== 'grid') {
+      return undefined;
+    }
+
+    const rafId = window.requestAnimationFrame(() => {
+      applySeatMapFit({ forceZoom: true });
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [
+    applySeatMapFit,
+    isMobileViewport,
+    mobileWorkspaceTab,
+    selectedHour,
+    seatViewMode,
+    isWideView,
+    wideSeatSize.width,
+    wideSeatSize.height,
+  ]);
 
 
   // 🎛 Setări text pentru SeatMap (nume, telefon, traseu, observații)
