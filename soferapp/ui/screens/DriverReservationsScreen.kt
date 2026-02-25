@@ -55,6 +55,7 @@ fun DriverReservationsScreen(
     var hasSeatReservations by remember { mutableStateOf(false) }
     var routeDiscounts by remember { mutableStateOf<List<DiscountTypeEntity>>(emptyList()) }
     var syncResultDialog by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var noShowResultDialog by remember { mutableStateOf<Pair<String, String>?>(null) }
     val dateFormatter = remember { DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss") }
 
     // când intrăm în ecran: citim rezervările din SQLite
@@ -330,8 +331,16 @@ fun DriverReservationsScreen(
 
                         selectedReservation = updated
 
+                        val finishedAt = LocalDateTime.now().format(dateFormatter)
+                        noShowResultDialog = "NO-SHOW salvat" to
+                                "Rezervarea a fost marcată NO-SHOW cu succes la $finishedAt."
+
                     } catch (e: Exception) {
-                        e.printStackTrace()
+                        Log.e("DriverReservationsScreen", "Eroare la NO-SHOW", e)
+                        val finishedAt = LocalDateTime.now().format(dateFormatter)
+                        val msg = e.localizedMessage ?: "Eroare necunoscută"
+                        noShowResultDialog = "NO-SHOW eșuat" to
+                                "Nu am putut marca rezervarea ca NO-SHOW la $finishedAt.\nDetalii: $msg"
                     }
                 }
             },
@@ -560,6 +569,20 @@ fun DriverReservationsScreen(
                 text = { Text(message) },
                 confirmButton = {
                     TextButton(onClick = { syncResultDialog = null }) {
+                        Text("OK")
+                    }
+                }
+            )
+        }
+
+        if (noShowResultDialog != null) {
+            val (title, message) = noShowResultDialog!!
+            AlertDialog(
+                onDismissRequest = { noShowResultDialog = null },
+                title = { Text(title) },
+                text = { Text(message) },
+                confirmButton = {
+                    TextButton(onClick = { noShowResultDialog = null }) {
                         Text("OK")
                     }
                 }
