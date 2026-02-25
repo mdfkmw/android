@@ -86,6 +86,7 @@ export default function ReservationPage({ userRole, user }) {
   const [seatMapZoom, setSeatMapZoom] = useState(1);
   const [seatMapPan, setSeatMapPan] = useState({ x: 0, y: 0 });
   const [seatMapMinZoom, setSeatMapMinZoom] = useState(1);
+  const [seatMapViewportHeight, setSeatMapViewportHeight] = useState(null);
   const gestureStateRef = useRef({ mode: null, startDistance: 0, startZoom: 1, startPan: { x: 0, y: 0 }, startTouch: { x: 0, y: 0 } });
   const mobileSeatMapViewportRef = useRef(null);
   const selectedSeatsRef = useRef([]);
@@ -315,6 +316,7 @@ export default function ReservationPage({ userRole, user }) {
       setMobileWorkspaceTab('map');
       setSeatMapZoom(1);
       setSeatMapMinZoom(1);
+      setSeatMapViewportHeight(null);
       setSeatMapPan({ x: 0, y: 0 });
     }
   }, [selectedHour]);
@@ -331,16 +333,19 @@ export default function ReservationPage({ userRole, user }) {
 
     const viewportWidth = viewportEl.clientWidth;
     const contentWidth = contentEl.offsetWidth;
+    const contentHeight = contentEl.offsetHeight;
 
-    if (!viewportWidth || !contentWidth) return null;
+    if (!viewportWidth || !contentWidth || !contentHeight) return null;
 
     const fitScale = Math.min((viewportWidth / contentWidth) * 0.98, 1);
     const safeFitScale = Number.isFinite(fitScale) && fitScale > 0 ? fitScale : 1;
     const centeredX = Math.max(0, (viewportWidth - (contentWidth * safeFitScale)) / 2);
+    const fittedHeight = Math.ceil(contentHeight * safeFitScale + 8);
 
     return {
       minZoom: safeFitScale,
       fitPan: { x: centeredX, y: 0 },
+      viewportHeight: fittedHeight,
     };
   }, [isMobileViewport]);
 
@@ -357,6 +362,7 @@ export default function ReservationPage({ userRole, user }) {
         if (!Number.isFinite(prev) || prev <= 1) return fit.minZoom;
         return Math.max(prev, fit.minZoom);
       });
+      setSeatMapViewportHeight(fit.viewportHeight);
       setSeatMapPan((prev) => {
         if (!Number.isFinite(prev?.x) || !Number.isFinite(prev?.y) || (prev.x === 0 && prev.y === 0)) {
           return fit.fitPan;
@@ -444,6 +450,7 @@ export default function ReservationPage({ userRole, user }) {
     if (fit) {
       setSeatMapMinZoom(fit.minZoom);
       setSeatMapZoom(fit.minZoom);
+      setSeatMapViewportHeight(fit.viewportHeight);
       setSeatMapPan(fit.fitPan);
       return;
     }
@@ -5645,7 +5652,11 @@ export default function ReservationPage({ userRole, user }) {
 
                         <div
                           ref={mobileSeatMapViewportRef}
-                          className="overflow-hidden rounded-lg border border-gray-200 bg-gray-100 touch-none h-[52vh] min-h-[300px]"
+                          className="overflow-hidden rounded-lg border border-gray-200 bg-gray-100 touch-none"
+                          style={{
+                            height: seatMapViewportHeight ? `${seatMapViewportHeight}px` : 'auto',
+                            minHeight: 260,
+                          }}
                           onTouchStart={handleSeatMapTouchStart}
                           onTouchMove={handleSeatMapTouchMove}
                           onTouchEnd={handleSeatMapTouchEnd}
