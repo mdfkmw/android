@@ -4,6 +4,8 @@ import androidx.compose.runtime.*
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.platform.LocalContext
+import ro.priscom.sofer.ui.data.local.LocalRepository
 import ro.priscom.sofer.ui.screens.LoginScreen
 import ro.priscom.sofer.ui.screens.MainTabsScreen
 import ro.priscom.sofer.ui.screens.SelectVehicleScreen
@@ -17,7 +19,11 @@ import java.time.LocalDateTime
 
 @Composable
 fun SoferApp(db: AppDatabase) {
+    val context = LocalContext.current
+    val localRepo = remember { LocalRepository(context) }
+
     var driverId by remember { mutableStateOf<String?>(null) }
+    var driverDisplayName by remember { mutableStateOf("Neautentificat") }
     var selectedVehicle by remember { mutableStateOf<Vehicle?>(null) }
     var sessionConfirmed by remember { mutableStateOf(false) }
     var showConfirmDialog by remember { mutableStateOf(false) }
@@ -28,6 +34,24 @@ fun SoferApp(db: AppDatabase) {
     var syncRefreshToken by remember { mutableIntStateOf(0) }
 
     val remoteSyncRepo = remember { RemoteSyncRepository() }
+
+    LaunchedEffect(driverId) {
+        val id = driverId?.toIntOrNull()
+        if (id == null) {
+            driverDisplayName = "Neautentificat"
+            return@LaunchedEffect
+        }
+
+        val localName = runCatching { localRepo.getDriver(id)?.name }
+            .getOrNull()
+            ?.trim()
+
+        driverDisplayName = if (!localName.isNullOrBlank()) {
+            localName
+        } else {
+            "Șofer $driverId"
+        }
+    }
 
     // sincronizare inițială la deschiderea aplicației (master + bilete)
     LaunchedEffect(Unit) {
@@ -139,7 +163,7 @@ fun SoferApp(db: AppDatabase) {
 
         // ecranul principal cu tab-uri (Administrare + Operații)
         else -> {
-            val driverName = if (driverId != null) "Șofer $driverId" else "Neautentificat"
+            val driverName = driverDisplayName
             val vehicleInfo =
                 if (selectedVehicle != null)
                     "${selectedVehicle!!.plate} - ${selectedVehicle!!.name}"

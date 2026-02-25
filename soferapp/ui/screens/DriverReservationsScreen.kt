@@ -587,18 +587,20 @@ private fun ReservationsList(
                     fontSize = 13.sp
                 )
 
-                val statusLabel = when (res.status) {
-                    "cancelled" -> "ANULATĂ"
-                    "no_show" -> "NO-SHOW"
-                    else -> res.status.uppercase()
-                }
+                if (!res.status.equals("active", ignoreCase = true)) {
+                    val statusLabel = when (res.status) {
+                        "cancelled" -> "ANULATĂ"
+                        "no_show" -> "NO-SHOW"
+                        else -> res.status.uppercase()
+                    }
 
-                Text(
-                    text = statusLabel,
-                    color = if (res.status == "cancelled") Color.Red else Color(0xFFFF9800),
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp
-                )
+                    Text(
+                        text = statusLabel,
+                        color = if (res.status == "cancelled") Color.Red else Color(0xFFFF9800),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                }
             }
 
             Divider(color = Color(0xFFDDDDDD))
@@ -667,18 +669,20 @@ private fun ReservationsHistoryTab(
                         fontSize = 13.sp
                     )
 
-                    val statusLabel = when (res.status) {
-                        "cancelled" -> "ANULATĂ"
-                        "no_show" -> "NO-SHOW"
-                        else -> res.status.uppercase()
-                    }
+                    if (!res.status.equals("active", ignoreCase = true)) {
+                        val statusLabel = when (res.status) {
+                            "cancelled" -> "ANULATĂ"
+                            "no_show" -> "NO-SHOW"
+                            else -> res.status.uppercase()
+                        }
 
-                    Text(
-                        text = statusLabel,
-                        color = if (res.status == "cancelled") Color.Red else Color(0xFFFF9800),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp
-                    )
+                        Text(
+                            text = statusLabel,
+                            color = if (res.status == "cancelled") Color.Red else Color(0xFFFF9800),
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 13.sp
+                        )
+                    }
                 }
                 Divider(color = Color(0xFFDDDDDD))
             }

@@ -23,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
@@ -283,7 +284,6 @@ fun MainTabsScreen(
             TopAppBar(
                 title = {
                     Column {
-                        Text(text = "Aplicație Șofer")
                         Text(
                             text = "$driverName | $vehicleInfo",
                             style = MaterialTheme.typography.bodySmall
@@ -606,7 +606,7 @@ fun AdminTabScreen(
                             contentColor = Color.Black
                         )
                     ) {
-                        Text("LOGIN")
+                        ButtonLabel("LOGIN")
                     }
 
                     Spacer(Modifier.width(8.dp))
@@ -624,7 +624,7 @@ fun AdminTabScreen(
                             contentColor = if (canStartTrip) Color.Black else inactiveText
                         )
                     ) {
-                        Text("PORNIRE IN CURSA")
+                        ButtonLabel("PORNIRE IN CURSA")
                     }
                 }
 
@@ -641,7 +641,7 @@ fun AdminTabScreen(
                             containerColor = activeGreen
                         )
                     ) {
-                        Text("REINITIALIZARE CASA DE MARCAT / CARD READER")
+                        ButtonLabel("REINITIALIZARE CASA DE MARCAT / CARD READER")
                     }
 
                     Spacer(Modifier.width(8.dp))
@@ -661,7 +661,7 @@ fun AdminTabScreen(
                             contentColor = if (canCloseTrip) Color.Black else inactiveText
                         )
                     ) {
-                        Text("INCHEIERE CURSA")
+                        ButtonLabel("INCHEIERE CURSA")
                     }
                 }
 
@@ -678,7 +678,7 @@ fun AdminTabScreen(
                             containerColor = activeGreen
                         )
                     ) {
-                        Text("SINCRONIZARE")
+                        ButtonLabel("SINCRONIZARE")
                     }
 
                     Spacer(Modifier.width(8.dp))
@@ -694,7 +694,7 @@ fun AdminTabScreen(
                             contentColor = if (canCloseDay) Color.Black else inactiveText
                         )
                     ) {
-                        Text("INCHIDERE ZI")
+                        ButtonLabel("INCHIDERE ZI")
                     }
                 }
             }
@@ -711,12 +711,12 @@ fun AdminTabScreen(
                             DriverLocalStore.clearSession()
                             onLogout()
                         }) {
-                            Text("DA")
+                            ButtonLabel("DA")
                         }
                     },
                     dismissButton = {
                         TextButton(onClick = { showCloseDay = false }) {
-                            Text("NU")
+                            ButtonLabel("NU")
                         }
                     }
                 )
@@ -1109,6 +1109,15 @@ fun SelectHourScreen(
 
 }
 
+@Composable
+private fun ButtonLabel(text: String) {
+    Text(
+        text = text,
+        modifier = Modifier.fillMaxWidth(),
+        textAlign = TextAlign.Center
+    )
+}
+
 
 
 
@@ -1340,7 +1349,7 @@ fun OperatiiTabScreen(
                             contentColor = if (canPlecare) Color.Black else inactiveText
                         )
                     ) {
-                        Text("PLECARE DIN STATIE")
+                        ButtonLabel("PLECARE DIN STATIE")
                     }
 
                     Spacer(Modifier.width(8.dp))
@@ -1356,7 +1365,7 @@ fun OperatiiTabScreen(
                             contentColor = if (canEmiteBilet) Color.Black else inactiveText
                         )
                     ) {
-                        Text("EMITE BILET")
+                        ButtonLabel("EMITE BILET")
                     }
                 }
 
@@ -1375,7 +1384,7 @@ fun OperatiiTabScreen(
                             contentColor = if (canRezervari) Color.Black else inactiveText
                         )
                     ) {
-                        Text("REZERVARI")
+                        ButtonLabel("REZERVARI")
                     }
 
 
@@ -1392,7 +1401,7 @@ fun OperatiiTabScreen(
                             contentColor = if (canStartBoarding) Color.Black else inactiveText
                         )
                     ) {
-                        Text(
+                        ButtonLabel(
                             if (boardingStarted)
                                 "IMBARCAREA A INCEPUT"
                             else
@@ -1421,7 +1430,7 @@ fun OperatiiTabScreen(
                             contentColor = if (canRapoarte) Color.Black else inactiveText
                         )
                     ) {
-                        Text("RAPOARTE")
+                        ButtonLabel("RAPOARTE")
                     }
 
                     Spacer(Modifier.width(8.dp))
@@ -1540,13 +1549,13 @@ fun OperatiiTabScreen(
                             onStartBoarding()
                             showStartBoardingConfirm = false
                         }) {
-                            Text("DA")
+                            ButtonLabel("DA")
                         }
                     }
 ,
                     dismissButton = {
                         TextButton(onClick = { showStartBoardingConfirm = false }) {
-                            Text("NU")
+                            ButtonLabel("NU")
                         }
                     }
                 )
