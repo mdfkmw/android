@@ -31,6 +31,7 @@ fun SoferApp(db: AppDatabase) {
     var showSyncScreen by remember { mutableStateOf(false) }
     var showLoginDialog by remember { mutableStateOf(false) }
     var showSelectVehicleScreen by remember { mutableStateOf(false) }
+    var loginSuccessMessage by remember { mutableStateOf<String?>(null) }
     var syncRefreshToken by remember { mutableIntStateOf(0) }
 
     val remoteSyncRepo = remember { RemoteSyncRepository() }
@@ -213,14 +214,29 @@ fun SoferApp(db: AppDatabase) {
     if (showLoginDialog) {
         LoginScreen(
             onLoginSuccess = { id, driverName ->
+                val resolvedName = driverName?.takeIf { it.isNotBlank() } ?: "Șofer $id"
                 driverId = id
-                driverDisplayName = driverName?.takeIf { it.isNotBlank() } ?: "Șofer $id"
+                driverDisplayName = resolvedName
+                loginSuccessMessage = "Autentificare reușită. Bine ai venit, $resolvedName!"
                 showLoginDialog = false
                 // după login mergem imediat la alegerea mașinii
                 showSelectVehicleScreen = true
             },
             onCancel = {
                 showLoginDialog = false
+            }
+        )
+    }
+
+    if (loginSuccessMessage != null) {
+        AlertDialog(
+            onDismissRequest = { loginSuccessMessage = null },
+            title = { Text("Autentificare") },
+            text = { Text(loginSuccessMessage!!) },
+            confirmButton = {
+                TextButton(onClick = { loginSuccessMessage = null }) {
+                    Text("OK")
+                }
             }
         )
     }
