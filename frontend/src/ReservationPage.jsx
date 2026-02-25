@@ -79,6 +79,16 @@ export default function ReservationPage({ userRole, user }) {
   const [showWideSeatControls, setShowWideSeatControls] = useState(false);
   const [isExportingSeatMap, setIsExportingSeatMap] = useState(false);
   const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(
+    typeof window !== 'undefined' ? window.innerWidth < 1024 : false,
+  );
+  const [mobileWorkspaceTab, setMobileWorkspaceTab] = useState('map');
+  const [seatMapZoom, setSeatMapZoom] = useState(1);
+  const [seatMapPan, setSeatMapPan] = useState({ x: 0, y: 0 });
+  const [seatMapMinZoom, setSeatMapMinZoom] = useState(1);
+  const [seatMapViewportHeight, setSeatMapViewportHeight] = useState(null);
+  const gestureStateRef = useRef({ mode: null, startDistance: 0, startZoom: 1, startPan: { x: 0, y: 0 }, startTouch: { x: 0, y: 0 }, startCenter: { x: 0, y: 0 } });
+  const mobileSeatMapViewportRef = useRef(null);
   const selectedSeatsRef = useRef([]);
   const previousSelectionKeyRef = useRef(null);
   const seatMapRef = useRef(null);
@@ -229,6 +239,21 @@ export default function ReservationPage({ userRole, user }) {
     };
   }, [isTimelineModalOpen]);
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const handleResize = () => {
+      setIsMobileViewport(window.innerWidth < 1024);
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
   const releaseHeldSeats = useCallback(() => {
     if (!tripId) return;
 
@@ -285,6 +310,200 @@ export default function ReservationPage({ userRole, user }) {
   const selectedScheduleId = (selectedSchedule?.scheduleId ?? selectedSchedule?.id) ?? null;
   const effectiveDirection = selectedSchedule?.direction ?? selectedDirection ?? null;
   const hasActiveSchedule = selectedScheduleId != null;
+
+  useEffect(() => {
+    if (!selectedHour) {
+      setMobileWorkspaceTab('map');
+      setSeatMapZoom(1);
+      setSeatMapMinZoom(1);
+      setSeatMapViewportHeight(null);
+      setSeatMapPan({ x: 0, y: 0 });
+      return;
+    }
+
+    setShowSeatObservations(true);
+  }, [selectedHour]);
+
+  const clampSeatMapZoom = useCallback((value) => {
+    return Math.min(3, Math.max(seatMapMinZoom, value));
+  }, [seatMapMinZoom]);
+
+  const recalculateSeatMapFitZoom = useCallback(() => {
+    if (!isMobileViewport) return null;
+    const viewportEl = mobileSeatMapViewportRef.current;
+    const contentEl = seatMapRef.current;
+    if (!viewportEl || !contentEl) return null;
+
+    const viewportWidth = viewportEl.clientWidth;
+    const contentWidth = contentEl.offsetWidth;
+    const contentHeight = contentEl.offsetHeight;
+
+    if (!viewportWidth || !contentWidth || !contentHeight) return null;
+
+    const fitScale = Math.min((viewportWidth / contentWidth) * 0.98, 1);
+    const safeFitScale = Number.isFinite(fitScale) && fitScale > 0 ? fitScale : 1;
+    const centeredX = Math.max(0, (viewportWidth - (contentWidth * safeFitScale)) / 2);
+    const fittedHeight = Math.ceil(contentHeight * safeFitScale + 8);
+
+    return {
+      minZoom: safeFitScale,
+      fitPan: { x: centeredX, y: 0 },
+      viewportHeight: fittedHeight,
+    };
+  }, [isMobileViewport]);
+
+  const applySeatMapFit = useCallback(({ forceZoom = false } = {}) => {
+    const fit = recalculateSeatMapFitZoom();
+    if (!fit) return;
+
+    setSeatMapMinZoom(fit.minZoom);
+    setSeatMapViewportHeight(fit.viewportHeight);
+    setSeatMapZoom((prev) => {
+      if (forceZoom || !Number.isFinite(prev) || prev <= 1) return fit.minZoom;
+      return Math.max(prev, fit.minZoom);
+    });
+    setSeatMapPan((prev) => {
+      if (forceZoom || !Number.isFinite(prev?.x) || !Number.isFinite(prev?.y) || (prev.x === 0 && prev.y === 0)) {
+        return fit.fitPan;
+      }
+      return prev;
+    });
+  }, [recalculateSeatMapFitZoom]);
+
+  useEffect(() => {
+    if (!isMobileViewport || mobileWorkspaceTab !== 'map' || !selectedHour || !Array.isArray(seats) || seats.length === 0) {
+      return undefined;
+    }
+
+    const rafId = window.requestAnimationFrame(() => {
+      applySeatMapFit({ forceZoom: false });
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [isMobileViewport, mobileWorkspaceTab, selectedHour, seats, applySeatMapFit]);
+
+  const getTouchPointInViewport = useCallback((touch) => {
+    const viewportEl = mobileSeatMapViewportRef.current;
+    const rect = viewportEl?.getBoundingClientRect();
+    if (!rect) {
+      return { x: touch.clientX, y: touch.clientY };
+    }
+    return {
+      x: touch.clientX - rect.left,
+      y: touch.clientY - rect.top,
+    };
+  }, []);
+
+  const getTouchDistance = useCallback((touchA, touchB) => {
+    const pointA = getTouchPointInViewport(touchA);
+    const pointB = getTouchPointInViewport(touchB);
+    const dx = pointA.x - pointB.x;
+    const dy = pointA.y - pointB.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }, [getTouchPointInViewport]);
+
+  const getTouchCenter = useCallback((touchA, touchB) => {
+    const pointA = getTouchPointInViewport(touchA);
+    const pointB = getTouchPointInViewport(touchB);
+    return {
+      x: (pointA.x + pointB.x) / 2,
+      y: (pointA.y + pointB.y) / 2,
+    };
+  }, [getTouchPointInViewport]);
+
+  const handleSeatMapTouchStart = useCallback((event) => {
+    if (!isMobileViewport) return;
+    const touches = event.touches;
+
+    if (touches.length === 2) {
+      event.preventDefault();
+      gestureStateRef.current = {
+        mode: 'pinch',
+        startDistance: getTouchDistance(touches[0], touches[1]),
+        startZoom: seatMapZoom,
+        startPan: seatMapPan,
+        startTouch: { x: 0, y: 0 },
+        startCenter: getTouchCenter(touches[0], touches[1]),
+      };
+      return;
+    }
+
+    if (touches.length === 1 && seatMapZoom > seatMapMinZoom + 0.01) {
+      gestureStateRef.current = {
+        mode: 'pan',
+        startDistance: 0,
+        startZoom: seatMapZoom,
+        startPan: seatMapPan,
+        startTouch: getTouchPointInViewport(touches[0]),
+        startCenter: { x: 0, y: 0 },
+      };
+      return;
+    }
+
+    gestureStateRef.current = {
+      mode: null,
+      startDistance: 0,
+      startZoom: seatMapZoom,
+      startPan: seatMapPan,
+      startTouch: { x: 0, y: 0 },
+      startCenter: { x: 0, y: 0 },
+    };
+  }, [getTouchCenter, getTouchDistance, getTouchPointInViewport, isMobileViewport, seatMapMinZoom, seatMapPan, seatMapZoom]);
+
+  const handleSeatMapTouchMove = useCallback((event) => {
+    if (!isMobileViewport) return;
+    const gesture = gestureStateRef.current;
+    if (!gesture?.mode) return;
+
+    if (gesture.mode === 'pinch' && event.touches.length === 2) {
+      event.preventDefault();
+      const currentDistance = getTouchDistance(event.touches[0], event.touches[1]);
+      if (!Number.isFinite(currentDistance) || !gesture.startDistance || !gesture.startZoom) return;
+
+      const ratio = currentDistance / gesture.startDistance;
+      const nextZoom = clampSeatMapZoom(gesture.startZoom * ratio);
+      const currentCenter = getTouchCenter(event.touches[0], event.touches[1]);
+
+      if (nextZoom <= seatMapMinZoom + 0.01) {
+        setSeatMapZoom(seatMapMinZoom);
+        applySeatMapFit({ forceZoom: true });
+        return;
+      }
+
+      const anchorContentX = (gesture.startCenter.x - gesture.startPan.x) / gesture.startZoom;
+      const anchorContentY = (gesture.startCenter.y - gesture.startPan.y) / gesture.startZoom;
+
+      setSeatMapZoom(nextZoom);
+      setSeatMapPan({
+        x: currentCenter.x - anchorContentX * nextZoom,
+        y: currentCenter.y - anchorContentY * nextZoom,
+      });
+      return;
+    }
+
+    if (gesture.mode === 'pan' && event.touches.length === 1) {
+      event.preventDefault();
+      const touch = getTouchPointInViewport(event.touches[0]);
+      setSeatMapPan({
+        x: gesture.startPan.x + (touch.x - gesture.startTouch.x),
+        y: gesture.startPan.y + (touch.y - gesture.startTouch.y),
+      });
+    }
+  }, [applySeatMapFit, clampSeatMapZoom, getTouchCenter, getTouchDistance, getTouchPointInViewport, isMobileViewport, seatMapMinZoom]);
+
+  const handleSeatMapTouchEnd = useCallback((event) => {
+    const touchesLeft = event?.touches?.length ?? 0;
+    if (touchesLeft > 0) return;
+
+    gestureStateRef.current = {
+      mode: null,
+      startDistance: 0,
+      startZoom: seatMapZoom,
+      startPan: seatMapPan,
+      startTouch: { x: 0, y: 0 },
+      startCenter: { x: 0, y: 0 },
+    };
+  }, [seatMapPan, seatMapZoom]);
 
   const stopDetailsByName = useMemo(() => {
     const map = new Map();
@@ -670,8 +889,28 @@ export default function ReservationPage({ userRole, user }) {
   // ⚙️ Control pentru dimensiunile locurilor în modul lat
   const [wideSeatSize, setWideSeatSize] = useState({ width: 260, height: 150 });
   // 📝 Afișare observații direct pe diagramă
-  const [showSeatObservations, setShowSeatObservations] = useState(false);
+  const [showSeatObservations, setShowSeatObservations] = useState(true);
 
+  useEffect(() => {
+    if (!isMobileViewport || mobileWorkspaceTab !== 'map' || !selectedHour || seatViewMode !== 'grid') {
+      return undefined;
+    }
+
+    const rafId = window.requestAnimationFrame(() => {
+      applySeatMapFit({ forceZoom: true });
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [
+    applySeatMapFit,
+    isMobileViewport,
+    mobileWorkspaceTab,
+    selectedHour,
+    seatViewMode,
+    isWideView,
+    wideSeatSize.width,
+    wideSeatSize.height,
+  ]);
 
 
   // 🎛 Setări text pentru SeatMap (nume, telefon, traseu, observații)
@@ -4967,7 +5206,7 @@ export default function ReservationPage({ userRole, user }) {
 
   return (
 
-    <div className="min-h-screen bg-gray-300 flex justify-center items-start py-10 px-6 w-full">
+    <div className="min-h-screen bg-gray-300 flex justify-center items-start py-4 sm:py-8 lg:py-10 px-2 sm:px-4 lg:px-6 w-full">
       <Toast message={toastMessage} type={toastType} />
 
 
@@ -4986,15 +5225,15 @@ export default function ReservationPage({ userRole, user }) {
       />
 
 
-      <div className="inline-block space-y-6">
-        <div className="flex flex-col md:inline-flex md:flex-row gap-6 items-start">
-          <div className="bg-white rounded shadow p-4 w-fit">
+      <div className="w-full max-w-[1700px] space-y-4 sm:space-y-6 mx-auto">
+        <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-stretch lg:items-start lg:justify-center">
+          <div className="bg-white rounded shadow p-4 w-full lg:w-fit">
             <label className="block font-semibold mb-2">Selectează data:</label>
             <CalendarWrapper selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
 
           </div>
 
-          <div className="bg-white rounded shadow p-4 space-y-4 w-fit">
+          <div className="bg-white rounded shadow p-4 space-y-4 w-full lg:w-fit">
             <div className="flex justify-between items-center flex-wrap gap-4">
               {/* Butoane rapide */}
               <div className="flex gap-2">
@@ -5241,9 +5480,34 @@ export default function ReservationPage({ userRole, user }) {
               Se încarcă harta locurilor...
             </div>
           ) : seats.length > 0 && (
-            <div className="bg-white rounded shadow p-4 flex gap-6 items-start w-fit mx-auto relative">
+            <div className="bg-white rounded shadow p-3 sm:p-4 flex flex-col lg:flex-row gap-4 lg:gap-6 items-stretch lg:items-start w-full lg:w-fit mx-auto relative">
+              {isMobileViewport && (
+                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 p-1 lg:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setMobileWorkspaceTab('map')}
+                    className={`flex-1 rounded-md px-3 py-2 text-sm font-semibold transition ${mobileWorkspaceTab === 'map'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-gray-700 hover:bg-white'
+                      }`}
+                  >
+                    Hartă locuri
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileWorkspaceTab('passengers')}
+                    className={`flex-1 rounded-md px-3 py-2 text-sm font-semibold transition ${mobileWorkspaceTab === 'passengers'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-gray-700 hover:bg-white'
+                      }`}
+                  >
+                    Date pasageri
+                  </button>
+                </div>
+              )}
+
               {/* Harta locurilor */}
-              <div>
+              <div className={`${isMobileViewport && mobileWorkspaceTab !== 'map' ? 'hidden' : 'block'} w-full lg:w-auto`}>
                 <div className="flex flex-wrap items-center gap-3 mb-3">
 
                   <div className="inline-flex items-center gap-2 flex-wrap">
@@ -5263,7 +5527,7 @@ export default function ReservationPage({ userRole, user }) {
                           : 'Vezi diagrama clasică a locurilor'
                       }
                     >
-                      {seatViewMode === 'timeline' ? 'Timeline' : 'Diagramă'}
+                      {seatViewMode === 'timeline' ? 'Timeline' : (isMobileViewport ? 'Diag' : 'Diagramă')}
                     </button>
                     <button
                       type="button"
@@ -5332,7 +5596,7 @@ export default function ReservationPage({ userRole, user }) {
                       title="Descarcă diagrama în format imagine PNG"
                       aria-busy={isExportingSeatMap}
                     >
-                      {isExportingSeatMap ? 'Se pregătește PNG…' : 'Export PNG'}
+                      {isExportingSeatMap ? 'Se pregătește PNG…' : 'PNG'}
                     </button>
                     <button
                       type="button"
@@ -5345,7 +5609,7 @@ export default function ReservationPage({ userRole, user }) {
                       title="Tipărește diagrama în format alb-negru"
                       aria-busy={isExportingSeatMap}
                     >
-                      {isExportingSeatMap ? 'Se pregătește tipărirea…' : 'Print diagramă'}
+                      {isExportingSeatMap ? 'Se pregătește tipărirea…' : 'Print'}
                     </button>
                   </div>
                 </div>
@@ -5427,40 +5691,101 @@ export default function ReservationPage({ userRole, user }) {
                       </div>
                     )}
 
-                    <div className={`overflow-auto ${isWideView ? (showWideSeatControls ? 'pt-20' : 'pt-12') : ''}`}>
-                      <SeatMap
-                        ref={seatMapRef}
-                        seats={seats}
-                        stops={stops}
-                        selectedSeats={selectedSeats}
-                        setSelectedSeats={setSelectedSeats}
-                        moveSourceSeat={moveSourceSeat}
-                        setMoveSourceSeat={setMoveSourceSeat}
-                        popupPassenger={popupPassenger}
-                        setPopupPassenger={setPopupPassenger}
-                        popupSeat={popupSeat}
-                        setPopupSeat={setPopupSeat}
-                        popupPosition={popupPosition}
-                        setPopupPosition={setPopupPosition}
-                        handleMovePassenger={handleMovePassenger}
-                        handleSeatClick={handleSeatClick}
-                        toggleSeat={toggleSeat}
-                        isSeatFullyOccupiedViaSegments={isSeatFullyOccupiedViaSegments}
-                        checkSegmentOverlap={checkSegmentOverlap}
-                        selectedRoute={selectedRoute}
-                        setToastMessage={setToastMessage}
-                        setToastType={setToastType}
-                        driverName={currentDriverName}
-                        intentHolds={intentHolds}
-                        vehicleId={
-                          tabs.find(tv => tv.trip_vehicle_id === activeTv)?.vehicle_id
-                        }
-                        isWideView={isWideView}
-                        wideSeatSize={wideSeatSize}
-                        showObservations={showSeatObservations}
-                        seatTextSize={effectiveSeatTextSize}
-                        seatTextColor={effectiveSeatTextColor}
-                      />
+                    {isMobileViewport ? (
+                      <div className={`relative ${isWideView ? (showWideSeatControls ? 'pt-20' : 'pt-12') : ''}`}>
+                        <div
+                          ref={mobileSeatMapViewportRef}
+                          className="overflow-hidden rounded-lg border border-gray-200 bg-gray-100"
+                          style={{
+                            height: seatMapViewportHeight ? `${seatMapViewportHeight}px` : 'auto',
+                            minHeight: 260,
+                            touchAction: seatMapZoom > seatMapMinZoom + 0.01 ? 'none' : 'pan-y',
+                          }}
+                          onTouchStart={handleSeatMapTouchStart}
+                          onTouchMove={handleSeatMapTouchMove}
+                          onTouchEnd={handleSeatMapTouchEnd}
+                          onTouchCancel={handleSeatMapTouchEnd}
+                        >
+                          <div
+                            style={{
+                              transform: `translate(${seatMapPan.x}px, ${seatMapPan.y}px) scale(${seatMapZoom})`,
+                              transformOrigin: 'top left',
+                              transition: 'transform 80ms linear',
+                            }}
+                          >
+                            <SeatMap
+                              ref={seatMapRef}
+                              seats={seats}
+                              stops={stops}
+                              selectedSeats={selectedSeats}
+                              setSelectedSeats={setSelectedSeats}
+                              moveSourceSeat={moveSourceSeat}
+                              setMoveSourceSeat={setMoveSourceSeat}
+                              popupPassenger={popupPassenger}
+                              setPopupPassenger={setPopupPassenger}
+                              popupSeat={popupSeat}
+                              setPopupSeat={setPopupSeat}
+                              popupPosition={popupPosition}
+                              setPopupPosition={setPopupPosition}
+                              handleMovePassenger={handleMovePassenger}
+                              handleSeatClick={handleSeatClick}
+                              toggleSeat={toggleSeat}
+                              isSeatFullyOccupiedViaSegments={isSeatFullyOccupiedViaSegments}
+                              checkSegmentOverlap={checkSegmentOverlap}
+                              selectedRoute={selectedRoute}
+                              setToastMessage={setToastMessage}
+                              setToastType={setToastType}
+                              driverName={currentDriverName}
+                              intentHolds={intentHolds}
+                              vehicleId={
+                                tabs.find(tv => tv.trip_vehicle_id === activeTv)?.vehicle_id
+                              }
+                              isWideView={isWideView}
+                              wideSeatSize={wideSeatSize}
+                              showObservations={showSeatObservations}
+                              seatTextSize={effectiveSeatTextSize}
+                              seatTextColor={effectiveSeatTextColor}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={`overflow-auto ${isWideView ? (showWideSeatControls ? 'pt-20' : 'pt-12') : ''}`}>
+                        <SeatMap
+                          ref={seatMapRef}
+                          seats={seats}
+                          stops={stops}
+                          selectedSeats={selectedSeats}
+                          setSelectedSeats={setSelectedSeats}
+                          moveSourceSeat={moveSourceSeat}
+                          setMoveSourceSeat={setMoveSourceSeat}
+                          popupPassenger={popupPassenger}
+                          setPopupPassenger={setPopupPassenger}
+                          popupSeat={popupSeat}
+                          setPopupSeat={setPopupSeat}
+                          popupPosition={popupPosition}
+                          setPopupPosition={setPopupPosition}
+                          handleMovePassenger={handleMovePassenger}
+                          handleSeatClick={handleSeatClick}
+                          toggleSeat={toggleSeat}
+                          isSeatFullyOccupiedViaSegments={isSeatFullyOccupiedViaSegments}
+                          checkSegmentOverlap={checkSegmentOverlap}
+                          selectedRoute={selectedRoute}
+                          setToastMessage={setToastMessage}
+                          setToastType={setToastType}
+                          driverName={currentDriverName}
+                          intentHolds={intentHolds}
+                          vehicleId={
+                            tabs.find(tv => tv.trip_vehicle_id === activeTv)?.vehicle_id
+                          }
+                          isWideView={isWideView}
+                          wideSeatSize={wideSeatSize}
+                          showObservations={showSeatObservations}
+                          seatTextSize={effectiveSeatTextSize}
+                          seatTextColor={effectiveSeatTextColor}
+                        />
+                      </div>
+                    )}
 
                       {showSeatTextSettings && (
                         <div className="absolute top-2 right-2 z-30 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-xs">
@@ -5512,7 +5837,6 @@ export default function ReservationPage({ userRole, user }) {
 
 
                     </div>
-                  </div>
                 )}
 
 
@@ -5520,7 +5844,7 @@ export default function ReservationPage({ userRole, user }) {
               </div>
 
               {/* Formulare pasageri */}
-              <div className="space-y-4 max-w-md w-[450px]">
+              <div className={`${isMobileViewport && mobileWorkspaceTab !== 'passengers' ? 'hidden' : 'block'} space-y-4 w-full lg:max-w-md lg:min-w-[420px]`}>
                 <div className="flex justify-between items-center">
                   <div className="font-semibold">Completează datele pasagerilor:</div>
                   <div className="flex items-center gap-2">

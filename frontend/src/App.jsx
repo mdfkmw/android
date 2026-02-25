@@ -161,9 +161,16 @@ function App() {
   // === Bara de navigație (ascunsă pe /login). FĂRĂ afișare rol. Logout ca link.
   const NavBar = () => {
     const { pathname } = useLocation();
+    const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+    useEffect(() => {
+      setIsMenuOpen(false);
+    }, [pathname]);
+
     if (pathname === '/login' || pathname.startsWith('/invita')) return null; // pe login și invitații nu afișăm nimic
-    return (
-      <div className="p-4 bg-gray-100 flex gap-6 items-center">
+
+    const navLinks = (
+      <>
         {canSee(['admin', 'operator_admin', 'agent']) && (
           <>
             <Link to="/" className="text-blue-600 hover:underline">Rezervări</Link>
@@ -181,22 +188,50 @@ function App() {
             <Link to="/admin/log" className="text-blue-600 hover:underline">Log</Link>
           </>
         )}
-        {/* Logout ca link, doar când e autentificat */}
-        {userRole && userRole !== 'guest' && (
+      </>
+    );
+
+    return (
+      <div className="sticky top-0 z-50 border-b border-gray-200 bg-gray-100/95 backdrop-blur">
+        <div className="p-4 flex items-center gap-4">
           <button
-            onClick={async () => {
-              try {
-                await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-              } catch { }
-              setUser(null);
-              setUserRole('guest');
-              window.location.href = '/login';
-            }}
-            className="ml-auto text-blue-600 hover:underline"
+            type="button"
+            className="inline-flex md:hidden items-center justify-center rounded-md border border-gray-300 bg-white px-2.5 py-2 text-gray-700"
+            aria-label="Deschide meniul"
+            onClick={() => setIsMenuOpen((prev) => !prev)}
           >
-            Logout
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+            </svg>
           </button>
-        )}
+
+          <div className="hidden md:flex gap-6 items-center">
+            {navLinks}
+          </div>
+
+          {/* Logout ca link, doar când e autentificat */}
+          {userRole && userRole !== 'guest' && (
+            <button
+              onClick={async () => {
+                try {
+                  await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+                } catch { }
+                setUser(null);
+                setUserRole('guest');
+                window.location.href = '/login';
+              }}
+              className="ml-auto text-blue-600 hover:underline"
+            >
+              Logout
+            </button>
+          )}
+        </div>
+
+        <div className={`px-4 pb-4 md:hidden ${isMenuOpen ? 'block' : 'hidden'}`}>
+          <div className="flex flex-col gap-3 rounded-lg border border-gray-200 bg-white p-3 shadow-sm">
+            {navLinks}
+          </div>
+        </div>
       </div>
     );
   };
