@@ -85,7 +85,9 @@ export default function ReservationPage({ userRole, user }) {
   const [mobileWorkspaceTab, setMobileWorkspaceTab] = useState('map');
   const [seatMapZoom, setSeatMapZoom] = useState(1);
   const [seatMapPan, setSeatMapPan] = useState({ x: 0, y: 0 });
+  const [seatMapMinZoom, setSeatMapMinZoom] = useState(1);
   const gestureStateRef = useRef({ mode: null, startDistance: 0, startZoom: 1, startPan: { x: 0, y: 0 }, startTouch: { x: 0, y: 0 } });
+  const mobileSeatMapViewportRef = useRef(null);
   const selectedSeatsRef = useRef([]);
   const previousSelectionKeyRef = useRef(null);
   const seatMapRef = useRef(null);
@@ -312,13 +314,49 @@ export default function ReservationPage({ userRole, user }) {
     if (!selectedHour) {
       setMobileWorkspaceTab('map');
       setSeatMapZoom(1);
+      setSeatMapMinZoom(1);
       setSeatMapPan({ x: 0, y: 0 });
     }
   }, [selectedHour]);
 
   const clampSeatMapZoom = useCallback((value) => {
-    return Math.min(3, Math.max(1, value));
-  }, []);
+    return Math.min(3, Math.max(seatMapMinZoom, value));
+  }, [seatMapMinZoom]);
+
+  const recalculateSeatMapFitZoom = useCallback(() => {
+    if (!isMobileViewport) return;
+    const viewportEl = mobileSeatMapViewportRef.current;
+    const contentEl = seatMapRef.current;
+    if (!viewportEl || !contentEl) return;
+
+    const viewportWidth = viewportEl.clientWidth;
+    const viewportHeight = viewportEl.clientHeight;
+    const contentWidth = contentEl.offsetWidth;
+    const contentHeight = contentEl.offsetHeight;
+
+    if (!viewportWidth || !viewportHeight || !contentWidth || !contentHeight) return;
+
+    const fitScale = Math.min(viewportWidth / contentWidth, viewportHeight / contentHeight, 1);
+    const safeFitScale = Number.isFinite(fitScale) && fitScale > 0 ? fitScale : 1;
+
+    setSeatMapMinZoom(safeFitScale);
+    setSeatMapZoom((prev) => {
+      if (!Number.isFinite(prev) || prev <= 1) return safeFitScale;
+      return Math.max(prev, safeFitScale);
+    });
+  }, [isMobileViewport]);
+
+  useEffect(() => {
+    if (!isMobileViewport || mobileWorkspaceTab !== 'map' || !selectedHour || !Array.isArray(seats) || seats.length === 0) {
+      return undefined;
+    }
+
+    const rafId = window.requestAnimationFrame(() => {
+      recalculateSeatMapFitZoom();
+    });
+
+    return () => window.cancelAnimationFrame(rafId);
+  }, [isMobileViewport, mobileWorkspaceTab, selectedHour, seats, recalculateSeatMapFitZoom]);
 
   const getTouchDistance = useCallback((touchA, touchB) => {
     const dx = touchA.clientX - touchB.clientX;
@@ -392,9 +430,9 @@ export default function ReservationPage({ userRole, user }) {
   }, [clampSeatMapZoom]);
 
   const resetSeatMapViewport = useCallback(() => {
-    setSeatMapZoom(1);
+    setSeatMapZoom(seatMapMinZoom);
     setSeatMapPan({ x: 0, y: 0 });
-  }, []);
+  }, [seatMapMinZoom]);
 
   const stopDetailsByName = useMemo(() => {
     const map = new Map();
@@ -5589,7 +5627,8 @@ export default function ReservationPage({ userRole, user }) {
                         </div>
 
                         <div
-                          className="overflow-hidden rounded-lg border border-gray-200 bg-gray-100 touch-none"
+                          ref={mobileSeatMapViewportRef}
+                          className="overflow-hidden rounded-lg border border-gray-200 bg-gray-100 touch-none h-[65vh]"
                           onTouchStart={handleSeatMapTouchStart}
                           onTouchMove={handleSeatMapTouchMove}
                           onTouchEnd={handleSeatMapTouchEnd}
