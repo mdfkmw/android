@@ -44,7 +44,9 @@ fun PaymentScreen(
 
     // 1) Încărcăm stațiile pentru route_schedule-ul curent
     LaunchedEffect(tripRouteScheduleId, syncRefreshToken) {
-        routeStations = repo.getStationsForRouteSchedule(tripRouteScheduleId)
+        routeStations = repo
+            .getStationsForRouteSchedule(tripRouteScheduleId)
+            .distinctBy { it.name.trim().lowercase() }
     }
 
     LaunchedEffect(reservation.seatId) {

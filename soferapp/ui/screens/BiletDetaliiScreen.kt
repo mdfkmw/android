@@ -99,7 +99,9 @@ fun BiletDetaliiScreen(
 
     LaunchedEffect(routeScheduleId, repo, syncRefreshToken) {
         val localRepo = repo ?: return@LaunchedEffect
-        routeStations = localRepo.getStationsForRouteSchedule(routeScheduleId)
+        routeStations = localRepo
+            .getStationsForRouteSchedule(routeScheduleId)
+            .distinctBy { it.name.trim().lowercase() }
 
     }
 

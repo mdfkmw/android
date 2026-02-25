@@ -46,6 +46,7 @@ class LocalRepository(context: Context) {
 
     suspend fun getStationsForRoute(routeId: Int, direction: String? = null): List<StationEntity> {
         val stations = db.stationDao().getForRoute(routeId)
+            .distinctBy { it.id }
 
         return if (direction?.lowercase() == "retur") stations.reversed() else stations
     }
@@ -605,5 +606,4 @@ class LocalRepository(context: Context) {
 
 
 }
-
 
