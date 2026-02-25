@@ -1286,10 +1286,35 @@ export default function ReservationPage({ userRole, user }) {
 
       try {
         setIsExportingSeatMap(true);
+        const maxCol = Math.max(...seats.map((seat) => seat.seat_col || 1));
+        const maxRow = Math.max(...seats.map((seat) => seat.row || 0));
+
+        const mmToPx = 96 / 25.4;
+        const pageMarginMm = 6;
+        const printableWidth = (210 - pageMarginMm * 2) * mmToPx;
+        const printableHeight = (297 - pageMarginMm * 2) * mmToPx;
+
+        const seatGap = 5;
+        const padding = 16;
+        const headerHeight = 28;
+
+        const widthBudget = printableWidth - (seatGap * (maxCol - 1)) - (padding * 2);
+        const heightBudget = printableHeight - (seatGap * maxRow) - (padding * 2) - headerHeight;
+
+        const fittedSeatWidth = widthBudget / maxCol;
+        const fittedSeatHeight = heightBudget / (maxRow + 1);
+
+        const computedSeatHeight = Math.max(34, Math.min(100, Math.floor(fittedSeatHeight)));
+        const computedSeatWidth = Math.max(
+          58,
+          Math.min(195, Math.floor(Math.min(fittedSeatWidth, computedSeatHeight * 1.9)))
+        );
+        const computedTextSize = Math.max(8, Math.min(15, Math.floor(computedSeatHeight * 0.17)));
+
         const canvas = drawSeatMapCanvas(driverName, {
-          forceSeatWidth: 195,
-          forceSeatHeight: 100,
-          forceTextSize: 15,
+          forceSeatWidth: computedSeatWidth,
+          forceSeatHeight: computedSeatHeight,
+          forceTextSize: computedTextSize,
           forceTextColor: '#000000',
           forceShowObservations: true,
           monochrome: true,
@@ -1321,9 +1346,24 @@ export default function ReservationPage({ userRole, user }) {
               <meta charset="utf-8" />
               <title>${title}</title>
               <style>
-                @page { size: auto; margin: 10mm; }
-                body { margin: 0; padding: 0; display: flex; justify-content: center; }
-                img { max-width: 100%; height: auto; }
+                @page { size: A4 portrait; margin: ${pageMarginMm}mm; }
+                html, body {
+                  width: 100%;
+                  height: 100%;
+                  margin: 0;
+                  padding: 0;
+                }
+                body {
+                  display: flex;
+                  align-items: center;
+                  justify-content: center;
+                }
+                img {
+                  width: 100%;
+                  height: 100%;
+                  object-fit: contain;
+                  page-break-inside: avoid;
+                }
               </style>
             </head>
             <body>
