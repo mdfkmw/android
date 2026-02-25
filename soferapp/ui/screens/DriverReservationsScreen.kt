@@ -16,6 +16,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import ro.priscom.sofer.ui.data.DriverLocalStore
 import ro.priscom.sofer.ui.data.local.DiscountTypeEntity
 import ro.priscom.sofer.ui.data.local.LocalRepository
@@ -32,6 +34,7 @@ private enum class ReservationsTab {
 fun DriverReservationsScreen(
     tripId: Int,
     currentStopName: String?,
+    boardingStarted: Boolean,
     routeScheduleId: Int?,
     syncRefreshToken: Int,
     repo: LocalRepository,
@@ -51,6 +54,8 @@ fun DriverReservationsScreen(
     var seatMapRefreshTrigger by remember { mutableStateOf(0) }
     var hasSeatReservations by remember { mutableStateOf(false) }
     var routeDiscounts by remember { mutableStateOf<List<DiscountTypeEntity>>(emptyList()) }
+    var syncResultDialog by remember { mutableStateOf<Pair<String, String>?>(null) }
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("dd.MM.yyyy HH:mm:ss") }
 
     // când intrăm în ecran: citim rezervările din SQLite
     LaunchedEffect(tripId, syncRefreshToken) {
@@ -287,6 +292,7 @@ fun DriverReservationsScreen(
             seatDisplay = seatDisplay(sel.seatId),
             fromStationName = stationName(sel.boardStationId),
             toStationName = stationName(sel.exitStationId),
+            canCollectDifference = boardingStarted && currentStationId != null,
             onBack = { selectedReservation = null },
             onMarkBoarded = {
                 val current = sel   // rezervarea selectată acum
@@ -455,6 +461,7 @@ fun DriverReservationsScreen(
                         SeatMapTab(
                             tripId = tripId,
                             currentStationId = currentStationId,
+                            allowTicketSell = boardingStarted,
                             routeScheduleId = routeScheduleId,
                             repo = repo,
                             refreshTrigger = seatMapRefreshTrigger,
@@ -516,12 +523,21 @@ fun DriverReservationsScreen(
                             // reîncărcăm lista din DB local (pentru taburile cu liste)
                             allReservations = repo.getReservationsForTrip(tripId)
 
+                            val finishedAt = LocalDateTime.now().format(dateFormatter)
+                            syncResultDialog = "Sincronizare reușită" to
+                                    "Sincronizarea rezervărilor s-a efectuat cu succes la $finishedAt."
+
                         } catch (e: Exception) {
                             Log.e(
                                 "DriverReservationsScreen",
                                 "Eroare la sincronizare",
                                 e
                             )
+
+                            val finishedAt = LocalDateTime.now().format(dateFormatter)
+                            val msg = e.localizedMessage ?: "Eroare necunoscută"
+                            syncResultDialog = "Sincronizare eșuată" to
+                                    "Sincronizarea rezervărilor a eșuat la $finishedAt.\nDetalii: $msg"
                         }
                     }
                 },
@@ -534,6 +550,20 @@ fun DriverReservationsScreen(
             ) {
                 Text("SINCRONIZEAZĂ")
             }
+        }
+
+        if (syncResultDialog != null) {
+            val (title, message) = syncResultDialog!!
+            AlertDialog(
+                onDismissRequest = { syncResultDialog = null },
+                title = { Text(title) },
+                text = { Text(message) },
+                confirmButton = {
+                    TextButton(onClick = { syncResultDialog = null }) {
+                        Text("OK")
+                    }
+                }
+            )
         }
 
 
@@ -728,6 +758,7 @@ fun ReservationDetailsScreen(
     seatDisplay: String,
     fromStationName: String,
     toStationName: String,
+    canCollectDifference: Boolean,
     onBack: () -> Unit,
     onMarkBoarded: () -> Unit,
     onMarkNoShow: () -> Unit,
@@ -841,6 +872,7 @@ fun ReservationDetailsScreen(
             // 🔵 ÎNCASEAZĂ / DIFERENȚĂ – FĂRĂ POPUP
             Button(
                 onClick = onOpenIncasare,
+                enabled = canCollectDifference,
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(48.dp),

@@ -454,6 +454,7 @@ fun AdminTabScreen(
     val coroutineScope = rememberCoroutineScope()
     var startTripError by remember { mutableStateOf<String?>(null) }
     var showCloseDay by remember { mutableStateOf(false) }
+    var showEndTripConfirm by remember { mutableStateOf(false) }
     var offlineDialogData by remember { mutableStateOf<OfflineDialogData?>(null) }
 
     // 🔹 Reîncărcăm rutele când se schimbă login-ul sau când se termină un sync.
@@ -649,7 +650,7 @@ fun AdminTabScreen(
                     Button(
                         onClick = {
                             if (canCloseTrip) {
-                                onEndTrip()
+                                showEndTripConfirm = true
                             }
                         },
                         enabled = canCloseTrip,
@@ -716,6 +717,27 @@ fun AdminTabScreen(
                     },
                     dismissButton = {
                         TextButton(onClick = { showCloseDay = false }) {
+                            ButtonLabel("NU")
+                        }
+                    }
+                )
+            }
+
+            if (showEndTripConfirm) {
+                AlertDialog(
+                    onDismissRequest = { showEndTripConfirm = false },
+                    title = { Text("Încheiere cursă") },
+                    text = { Text("Ești sigur că vrei să închei cursa curentă?") },
+                    confirmButton = {
+                        TextButton(onClick = {
+                            showEndTripConfirm = false
+                            onEndTrip()
+                        }) {
+                            ButtonLabel("DA")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showEndTripConfirm = false }) {
                             ButtonLabel("NU")
                         }
                     }
@@ -1211,7 +1233,7 @@ fun OperatiiTabScreen(
         loggedIn && tripStarted && (!gpsHasSignal || !autoSelected)
 
     val canEmiteBilet =
-        loggedIn && tripStarted && boardingStarted
+        loggedIn && tripStarted && boardingStarted && currentStopName != null
 
     val canRezervari =
         loggedIn && tripStarted
@@ -1241,6 +1263,7 @@ fun OperatiiTabScreen(
             DriverReservationsScreen(
                 tripId = tripId,
                 currentStopName = currentStopName,
+                boardingStarted = boardingStarted,
                 routeScheduleId = routeScheduleId,
                 syncRefreshToken = syncRefreshToken,
                 repo = repo,

@@ -38,6 +38,7 @@ data class SellTicketParams(
 fun SeatMapTab(
     tripId: Int,
     currentStationId: Int?,
+    allowTicketSell: Boolean,
     routeScheduleId: Int?,
     repo: LocalRepository,
     refreshTrigger: Int = 0,
@@ -435,11 +436,20 @@ fun SeatMapTab(
                                         onSellTicket(seat.id, fromId, toId)
                                     }
                                 },
-                                enabled = currentStationId != null,
+                                enabled = currentStationId != null && allowTicketSell,
                                 modifier = Modifier.fillMaxWidth(),
                                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF5BC21E))
                             ) {
                                 Text("VINDE BILET", color = Color.Black)
+                            }
+
+                            if (!allowTicketSell) {
+                                Spacer(Modifier.height(6.dp))
+                                Text(
+                                    text = "Pornește îmbarcarea pentru a activa vânzarea biletelor.",
+                                    color = Color.Gray,
+                                    fontSize = 12.sp
+                                )
                             }
                         } else {
                             // currentStationId e după intervalul liber — nu se poate vinde
