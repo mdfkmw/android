@@ -380,7 +380,7 @@ fun DriverReservationsScreen(
                 .padding(12.dp)
         ) {
             Column {
-                Text("Rezervări – cursa $tripId", fontSize = 18.sp)
+                Text("Rezervări", fontSize = 18.sp)
                 Text(
                     text = "Stație curentă: ${currentStopName ?: "-"}",
                     fontSize = 14.sp

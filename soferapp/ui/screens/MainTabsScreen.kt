@@ -268,7 +268,7 @@ fun MainTabsScreen(
     val gpsHasSignal = currentLocation != null
     val gpsBypassActive = gpsHasSignal && !autoSelected
     val effectiveStopName = if (gpsBypassActive) {
-        manualBypassStopName ?: currentStopName
+        manualBypassStopName
     } else {
         currentStopName
     }
