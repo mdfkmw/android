@@ -382,16 +382,34 @@ export default function ReservationPage({ userRole, user }) {
     return () => window.cancelAnimationFrame(rafId);
   }, [isMobileViewport, mobileWorkspaceTab, selectedHour, seats, applySeatMapFit]);
 
-  const getTouchDistance = useCallback((touchA, touchB) => {
-    const dx = touchA.clientX - touchB.clientX;
-    const dy = touchA.clientY - touchB.clientY;
-    return Math.sqrt(dx * dx + dy * dy);
+  const getTouchPointInViewport = useCallback((touch) => {
+    const viewportEl = mobileSeatMapViewportRef.current;
+    const rect = viewportEl?.getBoundingClientRect();
+    if (!rect) {
+      return { x: touch.clientX, y: touch.clientY };
+    }
+    return {
+      x: touch.clientX - rect.left,
+      y: touch.clientY - rect.top,
+    };
   }, []);
 
-  const getTouchCenter = useCallback((touchA, touchB) => ({
-    x: (touchA.clientX + touchB.clientX) / 2,
-    y: (touchA.clientY + touchB.clientY) / 2,
-  }), []);
+  const getTouchDistance = useCallback((touchA, touchB) => {
+    const pointA = getTouchPointInViewport(touchA);
+    const pointB = getTouchPointInViewport(touchB);
+    const dx = pointA.x - pointB.x;
+    const dy = pointA.y - pointB.y;
+    return Math.sqrt(dx * dx + dy * dy);
+  }, [getTouchPointInViewport]);
+
+  const getTouchCenter = useCallback((touchA, touchB) => {
+    const pointA = getTouchPointInViewport(touchA);
+    const pointB = getTouchPointInViewport(touchB);
+    return {
+      x: (pointA.x + pointB.x) / 2,
+      y: (pointA.y + pointB.y) / 2,
+    };
+  }, [getTouchPointInViewport]);
 
   const handleSeatMapTouchStart = useCallback((event) => {
     if (!isMobileViewport) return;
@@ -416,7 +434,7 @@ export default function ReservationPage({ userRole, user }) {
         startDistance: 0,
         startZoom: seatMapZoom,
         startPan: seatMapPan,
-        startTouch: { x: touches[0].clientX, y: touches[0].clientY },
+        startTouch: getTouchPointInViewport(touches[0]),
         startCenter: { x: 0, y: 0 },
       };
       return;
@@ -430,7 +448,7 @@ export default function ReservationPage({ userRole, user }) {
       startTouch: { x: 0, y: 0 },
       startCenter: { x: 0, y: 0 },
     };
-  }, [getTouchCenter, getTouchDistance, isMobileViewport, seatMapMinZoom, seatMapPan, seatMapZoom]);
+  }, [getTouchCenter, getTouchDistance, getTouchPointInViewport, isMobileViewport, seatMapMinZoom, seatMapPan, seatMapZoom]);
 
   const handleSeatMapTouchMove = useCallback((event) => {
     if (!isMobileViewport) return;
@@ -465,13 +483,13 @@ export default function ReservationPage({ userRole, user }) {
 
     if (gesture.mode === 'pan' && event.touches.length === 1) {
       event.preventDefault();
-      const touch = event.touches[0];
+      const touch = getTouchPointInViewport(event.touches[0]);
       setSeatMapPan({
-        x: gesture.startPan.x + (touch.clientX - gesture.startTouch.x),
-        y: gesture.startPan.y + (touch.clientY - gesture.startTouch.y),
+        x: gesture.startPan.x + (touch.x - gesture.startTouch.x),
+        y: gesture.startPan.y + (touch.y - gesture.startTouch.y),
       });
     }
-  }, [applySeatMapFit, clampSeatMapZoom, getTouchCenter, getTouchDistance, isMobileViewport, seatMapMinZoom]);
+  }, [applySeatMapFit, clampSeatMapZoom, getTouchCenter, getTouchDistance, getTouchPointInViewport, isMobileViewport, seatMapMinZoom]);
 
   const handleSeatMapTouchEnd = useCallback((event) => {
     const touchesLeft = event?.touches?.length ?? 0;
