@@ -87,7 +87,7 @@ export default function ReservationPage({ userRole, user }) {
   const [seatMapPan, setSeatMapPan] = useState({ x: 0, y: 0 });
   const [seatMapMinZoom, setSeatMapMinZoom] = useState(1);
   const [seatMapViewportHeight, setSeatMapViewportHeight] = useState(null);
-  const gestureStateRef = useRef({ mode: null, startDistance: 0, startZoom: 1, startPan: { x: 0, y: 0 }, startTouch: { x: 0, y: 0 } });
+  const gestureStateRef = useRef({ mode: null, startDistance: 0, startZoom: 1, startPan: { x: 0, y: 0 }, startTouch: { x: 0, y: 0 }, startCenter: { x: 0, y: 0 } });
   const mobileSeatMapViewportRef = useRef(null);
   const selectedSeatsRef = useRef([]);
   const previousSelectionKeyRef = useRef(null);
@@ -380,6 +380,11 @@ export default function ReservationPage({ userRole, user }) {
     return Math.sqrt(dx * dx + dy * dy);
   }, []);
 
+  const getTouchCenter = useCallback((touchA, touchB) => ({
+    x: (touchA.clientX + touchB.clientX) / 2,
+    y: (touchA.clientY + touchB.clientY) / 2,
+  }), []);
+
   const handleSeatMapTouchStart = useCallback((event) => {
     if (!isMobileViewport) return;
     const touches = event.touches;
@@ -392,20 +397,32 @@ export default function ReservationPage({ userRole, user }) {
         startZoom: seatMapZoom,
         startPan: seatMapPan,
         startTouch: { x: 0, y: 0 },
+        startCenter: getTouchCenter(touches[0], touches[1]),
       };
       return;
     }
 
-    if (touches.length === 1 && seatMapZoom > 1) {
+    if (touches.length === 1 && seatMapZoom > seatMapMinZoom + 0.01) {
       gestureStateRef.current = {
         mode: 'pan',
         startDistance: 0,
         startZoom: seatMapZoom,
         startPan: seatMapPan,
         startTouch: { x: touches[0].clientX, y: touches[0].clientY },
+        startCenter: { x: 0, y: 0 },
       };
+      return;
     }
-  }, [getTouchDistance, isMobileViewport, seatMapPan, seatMapZoom]);
+
+    gestureStateRef.current = {
+      mode: null,
+      startDistance: 0,
+      startZoom: seatMapZoom,
+      startPan: seatMapPan,
+      startTouch: { x: 0, y: 0 },
+      startCenter: { x: 0, y: 0 },
+    };
+  }, [getTouchCenter, getTouchDistance, isMobileViewport, seatMapMinZoom, seatMapPan, seatMapZoom]);
 
   const handleSeatMapTouchMove = useCallback((event) => {
     if (!isMobileViewport) return;
@@ -415,9 +432,20 @@ export default function ReservationPage({ userRole, user }) {
     if (gesture.mode === 'pinch' && event.touches.length === 2) {
       event.preventDefault();
       const currentDistance = getTouchDistance(event.touches[0], event.touches[1]);
-      if (!Number.isFinite(currentDistance) || !gesture.startDistance) return;
-      const nextZoom = clampSeatMapZoom(gesture.startZoom * (currentDistance / gesture.startDistance));
+      if (!Number.isFinite(currentDistance) || !gesture.startDistance || !gesture.startZoom) return;
+
+      const ratio = currentDistance / gesture.startDistance;
+      const nextZoom = clampSeatMapZoom(gesture.startZoom * ratio);
+      const currentCenter = getTouchCenter(event.touches[0], event.touches[1]);
+
+      const anchorContentX = (gesture.startCenter.x - gesture.startPan.x) / gesture.startZoom;
+      const anchorContentY = (gesture.startCenter.y - gesture.startPan.y) / gesture.startZoom;
+
       setSeatMapZoom(nextZoom);
+      setSeatMapPan({
+        x: currentCenter.x - anchorContentX * nextZoom,
+        y: currentCenter.y - anchorContentY * nextZoom,
+      });
       return;
     }
 
@@ -429,34 +457,21 @@ export default function ReservationPage({ userRole, user }) {
         y: gesture.startPan.y + (touch.clientY - gesture.startTouch.y),
       });
     }
-  }, [clampSeatMapZoom, getTouchDistance, isMobileViewport]);
+  }, [clampSeatMapZoom, getTouchCenter, getTouchDistance, isMobileViewport]);
 
-  const handleSeatMapTouchEnd = useCallback(() => {
+  const handleSeatMapTouchEnd = useCallback((event) => {
+    const touchesLeft = event?.touches?.length ?? 0;
+    if (touchesLeft > 0) return;
+
     gestureStateRef.current = {
       mode: null,
       startDistance: 0,
       startZoom: seatMapZoom,
       startPan: seatMapPan,
       startTouch: { x: 0, y: 0 },
+      startCenter: { x: 0, y: 0 },
     };
   }, [seatMapPan, seatMapZoom]);
-
-  const zoomSeatMap = useCallback((delta) => {
-    setSeatMapZoom((prev) => clampSeatMapZoom(prev + delta));
-  }, [clampSeatMapZoom]);
-
-  const resetSeatMapViewport = useCallback(() => {
-    const fit = recalculateSeatMapFitZoom();
-    if (fit) {
-      setSeatMapMinZoom(fit.minZoom);
-      setSeatMapZoom(fit.minZoom);
-      setSeatMapViewportHeight(fit.viewportHeight);
-      setSeatMapPan(fit.fitPan);
-      return;
-    }
-    setSeatMapZoom(seatMapMinZoom);
-    setSeatMapPan({ x: 0, y: 0 });
-  }, [recalculateSeatMapFitZoom, seatMapMinZoom]);
 
   const stopDetailsByName = useMemo(() => {
     const map = new Map();
@@ -5626,36 +5641,13 @@ export default function ReservationPage({ userRole, user }) {
 
                     {isMobileViewport ? (
                       <div className={`relative ${isWideView ? (showWideSeatControls ? 'pt-20' : 'pt-12') : ''}`}>
-                        <div className="mb-2 flex items-center justify-end gap-2">
-                          <button
-                            type="button"
-                            onClick={() => zoomSeatMap(-0.2)}
-                            className="px-2 py-1 text-xs rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100"
-                          >
-                            −
-                          </button>
-                          <button
-                            type="button"
-                            onClick={resetSeatMapViewport}
-                            className="px-2 py-1 text-xs rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100"
-                          >
-                            Reset zoom
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => zoomSeatMap(0.2)}
-                            className="px-2 py-1 text-xs rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100"
-                          >
-                            +
-                          </button>
-                        </div>
-
                         <div
                           ref={mobileSeatMapViewportRef}
-                          className="overflow-hidden rounded-lg border border-gray-200 bg-gray-100 touch-none"
+                          className="overflow-hidden rounded-lg border border-gray-200 bg-gray-100"
                           style={{
                             height: seatMapViewportHeight ? `${seatMapViewportHeight}px` : 'auto',
                             minHeight: 260,
+                            touchAction: seatMapZoom > seatMapMinZoom + 0.01 ? 'none' : 'pan-y',
                           }}
                           onTouchStart={handleSeatMapTouchStart}
                           onTouchMove={handleSeatMapTouchMove}
