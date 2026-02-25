@@ -21,7 +21,7 @@ import ro.priscom.sofer.ui.data.DriverLocalStore
 
 @Composable
 fun LoginScreen(
-    onLoginSuccess: (String) -> Unit,
+    onLoginSuccess: (id: String, driverName: String?) -> Unit,
     onCancel: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -82,7 +82,7 @@ fun LoginScreen(
                     if (backendUser != null) {
                         DriverLocalStore.setEmployeeId(backendUser.id)
                         DriverLocalStore.setOperatorId(backendUser.operator_id)
-                        onLoginSuccess(driverIdText)
+                        onLoginSuccess(backendUser.id.toString(), backendUser.name)
                         return@launch
                     }
 
@@ -115,7 +115,7 @@ fun LoginScreen(
                     DriverLocalStore.setEmployeeId(driver.id)
                     DriverLocalStore.setOperatorId(driver.operatorId)
 
-                    onLoginSuccess(driverIdText)
+                    onLoginSuccess(driver.id.toString(), driver.name)
 
                 }
             },

@@ -35,7 +35,7 @@ fun SoferApp(db: AppDatabase) {
 
     val remoteSyncRepo = remember { RemoteSyncRepository() }
 
-    LaunchedEffect(driverId) {
+    LaunchedEffect(driverId, syncRefreshToken) {
         val id = driverId?.toIntOrNull()
         if (id == null) {
             driverDisplayName = "Neautentificat"
@@ -48,8 +48,10 @@ fun SoferApp(db: AppDatabase) {
 
         driverDisplayName = if (!localName.isNullOrBlank()) {
             localName
-        } else {
+        } else if (driverDisplayName.isBlank() || driverDisplayName == "Neautentificat") {
             "Șofer $driverId"
+        } else {
+            driverDisplayName
         }
     }
 
@@ -164,11 +166,13 @@ fun SoferApp(db: AppDatabase) {
         // ecranul principal cu tab-uri (Administrare + Operații)
         else -> {
             val driverName = driverDisplayName
-            val vehicleInfo =
-                if (selectedVehicle != null)
-                    "${selectedVehicle!!.plate} - ${selectedVehicle!!.name}"
-                else
-                    "Fără mașină"
+            val vehicleInfo = selectedVehicle?.let { vehicle ->
+                if (vehicle.name.equals(vehicle.plate, ignoreCase = true)) {
+                    vehicle.plate
+                } else {
+                    "${vehicle.plate} - ${vehicle.name}"
+                }
+            } ?: "Fără mașină"
 
             MainTabsScreen(
                 driverName = driverName,
@@ -208,8 +212,9 @@ fun SoferApp(db: AppDatabase) {
     // 3) Dialogul de LOGIN (nu mai e ecran de start, apare peste Administrare)
     if (showLoginDialog) {
         LoginScreen(
-            onLoginSuccess = { id ->
+            onLoginSuccess = { id, driverName ->
                 driverId = id
+                driverDisplayName = driverName?.takeIf { it.isNotBlank() } ?: "Șofer $id"
                 showLoginDialog = false
                 // după login mergem imediat la alegerea mașinii
                 showSelectVehicleScreen = true
