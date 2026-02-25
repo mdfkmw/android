@@ -96,3 +96,82 @@
   40%, 80% { transform: translateX(6px); }
 }
 .animate-shake { animation: shake 0.3s ease-in-out 1; }
+
+/* ---------- Enterprise mobile responsiveness baseline ---------- */
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  body {
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+
+  #root {
+    min-height: 100dvh;
+  }
+
+  img,
+  svg,
+  video,
+  canvas,
+  iframe {
+    max-width: 100%;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    font: inherit;
+  }
+}
+
+@layer components {
+  .app-shell {
+    min-height: 100dvh;
+    background: #f8fafc;
+  }
+
+  .app-page {
+    width: 100%;
+    max-width: 100%;
+    margin-inline: auto;
+    padding: 0.75rem;
+  }
+
+  .touch-scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+@media (max-width: 1024px) {
+  .app-page {
+    padding: 0.625rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .app-page {
+    padding: 0.5rem;
+  }
+
+  /* keep data-dense screens usable on mobile without clipping */
+  table {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* better tap targets on mobile */
+  button,
+  [role='button'],
+  a.inline-flex,
+  .inline-flex {
+    min-height: 2.25rem;
+  }
+}

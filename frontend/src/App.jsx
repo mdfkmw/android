@@ -158,52 +158,109 @@ function App() {
     return children;
   };
 
-  // === Bara de navigație (ascunsă pe /login). FĂRĂ afișare rol. Logout ca link.
+  // === Bara de navigație (ascunsă pe /login), optimizată responsive/mobile-first
   const NavBar = () => {
     const { pathname } = useLocation();
-    if (pathname === '/login' || pathname.startsWith('/invita')) return null; // pe login și invitații nu afișăm nimic
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+    useEffect(() => {
+      setIsMobileMenuOpen(false);
+    }, [pathname]);
+
+    if (pathname === '/login' || pathname.startsWith('/invita')) return null;
+
+    const linkClass =
+      'rounded-md px-3 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-50 hover:text-blue-900';
+
     return (
-      <div className="p-4 bg-gray-100 flex gap-6 items-center">
-        {canSee(['admin', 'operator_admin', 'agent']) && (
-          <>
-            <Link to="/" className="text-blue-600 hover:underline">Rezervări</Link>
-            <Link to="/backup" className="text-blue-600 hover:underline">Backupuri</Link>
-            <Link to="/admin/blacklist" className="text-blue-600 hover:underline">Blacklist</Link>
-            <Link to="/pasageri" className="text-blue-600 hover:underline">Pasageri</Link>
-          </>
-        )}
-        {canSee(['admin', 'operator_admin', 'agent']) && (
-          <Link to="/admin" className="text-blue-600 hover:underline">Administrare</Link>
-        )}
-        {canSee(['admin', 'operator_admin']) && (
-          <>
-            <Link to="/admin/reports" className="text-blue-600 hover:underline">Rapoarte</Link>
-            <Link to="/admin/log" className="text-blue-600 hover:underline">Log</Link>
-          </>
-        )}
-        {/* Logout ca link, doar când e autentificat */}
-        {userRole && userRole !== 'guest' && (
+      <header className="sticky top-0 z-40 border-b border-gray-200 bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/85">
+        <div className="mx-auto flex w-full max-w-screen-2xl items-center gap-2 px-3 py-2 sm:px-4">
+          <Link to="/" className="mr-1 text-base font-semibold text-slate-800 sm:text-lg">ADrez</Link>
+
           <button
-            onClick={async () => {
-              try {
-                await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
-              } catch { }
-              setUser(null);
-              setUserRole('guest');
-              window.location.href = '/login';
-            }}
-            className="ml-auto text-blue-600 hover:underline"
+            type="button"
+            className="ml-auto inline-flex h-10 w-10 items-center justify-center rounded-md border border-gray-300 text-gray-700 md:hidden"
+            onClick={() => setIsMobileMenuOpen((prev) => !prev)}
+            aria-label="Toggle navigation menu"
+            aria-expanded={isMobileMenuOpen}
           >
-            Logout
+            {isMobileMenuOpen ? '✕' : '☰'}
           </button>
+
+          <nav className="ml-2 hidden items-center gap-1 md:flex md:flex-wrap">
+            {canSee(['admin', 'operator_admin', 'agent']) && (
+              <>
+                <Link to="/" className={linkClass}>Rezervări</Link>
+                <Link to="/backup" className={linkClass}>Backupuri</Link>
+                <Link to="/admin/blacklist" className={linkClass}>Blacklist</Link>
+                <Link to="/pasageri" className={linkClass}>Pasageri</Link>
+                <Link to="/admin" className={linkClass}>Administrare</Link>
+              </>
+            )}
+            {canSee(['admin', 'operator_admin']) && (
+              <>
+                <Link to="/admin/reports" className={linkClass}>Rapoarte</Link>
+                <Link to="/admin/log" className={linkClass}>Log</Link>
+              </>
+            )}
+          </nav>
+
+          {userRole && userRole !== 'guest' && (
+            <button
+              onClick={async () => {
+                try {
+                  await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+                } catch { }
+                setUser(null);
+                setUserRole('guest');
+                window.location.href = '/login';
+              }}
+              className="ml-auto hidden rounded-md px-3 py-2 text-sm font-medium text-blue-700 transition-colors hover:bg-blue-50 hover:text-blue-900 md:inline-flex"
+            >
+              Logout
+            </button>
+          )}
+        </div>
+
+        {isMobileMenuOpen && (
+          <nav className="border-t border-gray-200 bg-white px-3 pb-3 pt-2 md:hidden">
+            <div className="grid gap-1">
+              {canSee(['admin', 'operator_admin', 'agent']) && (
+                <>
+                  <Link to="/" className={linkClass}>Rezervări</Link>
+                  <Link to="/backup" className={linkClass}>Backupuri</Link>
+                  <Link to="/admin/blacklist" className={linkClass}>Blacklist</Link>
+                  <Link to="/pasageri" className={linkClass}>Pasageri</Link>
+                  <Link to="/admin" className={linkClass}>Administrare</Link>
+                </>
+              )}
+              {canSee(['admin', 'operator_admin']) && (
+                <>
+                  <Link to="/admin/reports" className={linkClass}>Rapoarte</Link>
+                  <Link to="/admin/log" className={linkClass}>Log</Link>
+                </>
+              )}
+              {userRole && userRole !== 'guest' && (
+                <button
+                  onClick={async () => {
+                    try {
+                      await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' });
+                    } catch { }
+                    setUser(null);
+                    setUserRole('guest');
+                    window.location.href = '/login';
+                  }}
+                  className="mt-2 inline-flex h-10 items-center justify-center rounded-md border border-blue-200 bg-blue-50 px-3 text-sm font-medium text-blue-700"
+                >
+                  Logout
+                </button>
+              )}
+            </div>
+          </nav>
         )}
-      </div>
+      </header>
     );
   };
-
-
-
-
 
   const ChatWrapper = () => {
     const { pathname } = useLocation();
@@ -213,10 +270,12 @@ function App() {
 
   return (
     <Router>
-      <NavBar />
-      <ChatWrapper />
+      <div className="app-shell">
+        <NavBar />
+        <ChatWrapper />
 
-      <Routes>
+        <main className="app-page">
+          <Routes>
         <Route
           path="/terminal"
           element={
@@ -333,7 +392,9 @@ function App() {
 
         />
         <Route path="/rezervare/:id" element={<ReservationDetails />} />
-      </Routes>
+          </Routes>
+        </main>
+      </div>
     </Router>
   );
 }
