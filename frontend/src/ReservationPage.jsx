@@ -5011,8 +5011,8 @@ export default function ReservationPage({ userRole, user }) {
       />
 
 
-      <div className="w-full max-w-[1700px] space-y-4 sm:space-y-6">
-        <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-stretch lg:items-start">
+      <div className="w-full max-w-[1700px] space-y-4 sm:space-y-6 mx-auto">
+        <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-stretch lg:items-start lg:justify-center">
           <div className="bg-white rounded shadow p-4 w-full lg:w-fit">
             <label className="block font-semibold mb-2">Selectează data:</label>
             <CalendarWrapper selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
@@ -5266,7 +5266,7 @@ export default function ReservationPage({ userRole, user }) {
               Se încarcă harta locurilor...
             </div>
           ) : seats.length > 0 && (
-            <div className="bg-white rounded shadow p-3 sm:p-4 flex flex-col lg:flex-row gap-4 lg:gap-6 items-stretch lg:items-start w-full mx-auto relative">
+            <div className="bg-white rounded shadow p-3 sm:p-4 flex flex-col lg:flex-row gap-4 lg:gap-6 items-stretch lg:items-start w-full lg:w-fit mx-auto relative">
               {isMobileViewport && (
                 <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 p-1 lg:hidden">
                   <button
