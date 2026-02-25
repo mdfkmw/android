@@ -438,6 +438,15 @@ export default function ReservationPage({ userRole, user }) {
       const nextZoom = clampSeatMapZoom(gesture.startZoom * ratio);
       const currentCenter = getTouchCenter(event.touches[0], event.touches[1]);
 
+      if (nextZoom <= seatMapMinZoom + 0.01) {
+        setSeatMapZoom(seatMapMinZoom);
+        const fit = recalculateSeatMapFitZoom();
+        if (fit) {
+          setSeatMapPan(fit.fitPan);
+        }
+        return;
+      }
+
       const anchorContentX = (gesture.startCenter.x - gesture.startPan.x) / gesture.startZoom;
       const anchorContentY = (gesture.startCenter.y - gesture.startPan.y) / gesture.startZoom;
 
@@ -457,7 +466,7 @@ export default function ReservationPage({ userRole, user }) {
         y: gesture.startPan.y + (touch.clientY - gesture.startTouch.y),
       });
     }
-  }, [clampSeatMapZoom, getTouchCenter, getTouchDistance, isMobileViewport]);
+  }, [clampSeatMapZoom, getTouchCenter, getTouchDistance, isMobileViewport, recalculateSeatMapFitZoom, seatMapMinZoom]);
 
   const handleSeatMapTouchEnd = useCallback((event) => {
     const touchesLeft = event?.touches?.length ?? 0;
@@ -5475,7 +5484,7 @@ export default function ReservationPage({ userRole, user }) {
                           : 'Vezi diagrama clasică a locurilor'
                       }
                     >
-                      {seatViewMode === 'timeline' ? 'Timeline' : 'Diagramă'}
+                      {seatViewMode === 'timeline' ? 'Timeline' : (isMobileViewport ? 'Diag' : 'Diagramă')}
                     </button>
                     <button
                       type="button"
@@ -5544,7 +5553,7 @@ export default function ReservationPage({ userRole, user }) {
                       title="Descarcă diagrama în format imagine PNG"
                       aria-busy={isExportingSeatMap}
                     >
-                      {isExportingSeatMap ? 'Se pregătește PNG…' : 'Export PNG'}
+                      {isExportingSeatMap ? 'Se pregătește PNG…' : 'PNG'}
                     </button>
                     <button
                       type="button"
@@ -5557,7 +5566,7 @@ export default function ReservationPage({ userRole, user }) {
                       title="Tipărește diagrama în format alb-negru"
                       aria-busy={isExportingSeatMap}
                     >
-                      {isExportingSeatMap ? 'Se pregătește tipărirea…' : 'Print diagramă'}
+                      {isExportingSeatMap ? 'Se pregătește tipărirea…' : 'Print'}
                     </button>
                   </div>
                 </div>
