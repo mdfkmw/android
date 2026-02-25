@@ -248,12 +248,6 @@ export default function ReservationPage({ userRole, user }) {
     };
   }, []);
 
-  useEffect(() => {
-    if (!selectedHour) {
-      setMobileWorkspaceTab('map');
-    }
-  }, [selectedHour]);
-
   const releaseHeldSeats = useCallback(() => {
     if (!tripId) return;
 
@@ -310,6 +304,12 @@ export default function ReservationPage({ userRole, user }) {
   const selectedScheduleId = (selectedSchedule?.scheduleId ?? selectedSchedule?.id) ?? null;
   const effectiveDirection = selectedSchedule?.direction ?? selectedDirection ?? null;
   const hasActiveSchedule = selectedScheduleId != null;
+
+  useEffect(() => {
+    if (!selectedHour) {
+      setMobileWorkspaceTab('map');
+    }
+  }, [selectedHour]);
 
   const stopDetailsByName = useMemo(() => {
     const map = new Map();
