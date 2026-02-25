@@ -83,6 +83,9 @@ export default function ReservationPage({ userRole, user }) {
     typeof window !== 'undefined' ? window.innerWidth < 1024 : false,
   );
   const [mobileWorkspaceTab, setMobileWorkspaceTab] = useState('map');
+  const [seatMapZoom, setSeatMapZoom] = useState(1);
+  const [seatMapPan, setSeatMapPan] = useState({ x: 0, y: 0 });
+  const gestureStateRef = useRef({ mode: null, startDistance: 0, startZoom: 1, startPan: { x: 0, y: 0 }, startTouch: { x: 0, y: 0 } });
   const selectedSeatsRef = useRef([]);
   const previousSelectionKeyRef = useRef(null);
   const seatMapRef = useRef(null);
@@ -308,8 +311,90 @@ export default function ReservationPage({ userRole, user }) {
   useEffect(() => {
     if (!selectedHour) {
       setMobileWorkspaceTab('map');
+      setSeatMapZoom(1);
+      setSeatMapPan({ x: 0, y: 0 });
     }
   }, [selectedHour]);
+
+  const clampSeatMapZoom = useCallback((value) => {
+    return Math.min(3, Math.max(1, value));
+  }, []);
+
+  const getTouchDistance = useCallback((touchA, touchB) => {
+    const dx = touchA.clientX - touchB.clientX;
+    const dy = touchA.clientY - touchB.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }, []);
+
+  const handleSeatMapTouchStart = useCallback((event) => {
+    if (!isMobileViewport) return;
+    const touches = event.touches;
+
+    if (touches.length === 2) {
+      event.preventDefault();
+      gestureStateRef.current = {
+        mode: 'pinch',
+        startDistance: getTouchDistance(touches[0], touches[1]),
+        startZoom: seatMapZoom,
+        startPan: seatMapPan,
+        startTouch: { x: 0, y: 0 },
+      };
+      return;
+    }
+
+    if (touches.length === 1 && seatMapZoom > 1) {
+      gestureStateRef.current = {
+        mode: 'pan',
+        startDistance: 0,
+        startZoom: seatMapZoom,
+        startPan: seatMapPan,
+        startTouch: { x: touches[0].clientX, y: touches[0].clientY },
+      };
+    }
+  }, [getTouchDistance, isMobileViewport, seatMapPan, seatMapZoom]);
+
+  const handleSeatMapTouchMove = useCallback((event) => {
+    if (!isMobileViewport) return;
+    const gesture = gestureStateRef.current;
+    if (!gesture?.mode) return;
+
+    if (gesture.mode === 'pinch' && event.touches.length === 2) {
+      event.preventDefault();
+      const currentDistance = getTouchDistance(event.touches[0], event.touches[1]);
+      if (!Number.isFinite(currentDistance) || !gesture.startDistance) return;
+      const nextZoom = clampSeatMapZoom(gesture.startZoom * (currentDistance / gesture.startDistance));
+      setSeatMapZoom(nextZoom);
+      return;
+    }
+
+    if (gesture.mode === 'pan' && event.touches.length === 1) {
+      event.preventDefault();
+      const touch = event.touches[0];
+      setSeatMapPan({
+        x: gesture.startPan.x + (touch.clientX - gesture.startTouch.x),
+        y: gesture.startPan.y + (touch.clientY - gesture.startTouch.y),
+      });
+    }
+  }, [clampSeatMapZoom, getTouchDistance, isMobileViewport]);
+
+  const handleSeatMapTouchEnd = useCallback(() => {
+    gestureStateRef.current = {
+      mode: null,
+      startDistance: 0,
+      startZoom: seatMapZoom,
+      startPan: seatMapPan,
+      startTouch: { x: 0, y: 0 },
+    };
+  }, [seatMapPan, seatMapZoom]);
+
+  const zoomSeatMap = useCallback((delta) => {
+    setSeatMapZoom((prev) => clampSeatMapZoom(prev + delta));
+  }, [clampSeatMapZoom]);
+
+  const resetSeatMapViewport = useCallback(() => {
+    setSeatMapZoom(1);
+    setSeatMapPan({ x: 0, y: 0 });
+  }, []);
 
   const stopDetailsByName = useMemo(() => {
     const map = new Map();
@@ -5477,40 +5562,119 @@ export default function ReservationPage({ userRole, user }) {
                       </div>
                     )}
 
-                    <div className={`overflow-auto ${isWideView ? (showWideSeatControls ? 'pt-20' : 'pt-12') : ''}`}>
-                      <SeatMap
-                        ref={seatMapRef}
-                        seats={seats}
-                        stops={stops}
-                        selectedSeats={selectedSeats}
-                        setSelectedSeats={setSelectedSeats}
-                        moveSourceSeat={moveSourceSeat}
-                        setMoveSourceSeat={setMoveSourceSeat}
-                        popupPassenger={popupPassenger}
-                        setPopupPassenger={setPopupPassenger}
-                        popupSeat={popupSeat}
-                        setPopupSeat={setPopupSeat}
-                        popupPosition={popupPosition}
-                        setPopupPosition={setPopupPosition}
-                        handleMovePassenger={handleMovePassenger}
-                        handleSeatClick={handleSeatClick}
-                        toggleSeat={toggleSeat}
-                        isSeatFullyOccupiedViaSegments={isSeatFullyOccupiedViaSegments}
-                        checkSegmentOverlap={checkSegmentOverlap}
-                        selectedRoute={selectedRoute}
-                        setToastMessage={setToastMessage}
-                        setToastType={setToastType}
-                        driverName={currentDriverName}
-                        intentHolds={intentHolds}
-                        vehicleId={
-                          tabs.find(tv => tv.trip_vehicle_id === activeTv)?.vehicle_id
-                        }
-                        isWideView={isWideView}
-                        wideSeatSize={wideSeatSize}
-                        showObservations={showSeatObservations}
-                        seatTextSize={effectiveSeatTextSize}
-                        seatTextColor={effectiveSeatTextColor}
-                      />
+                    {isMobileViewport ? (
+                      <div className={`relative ${isWideView ? (showWideSeatControls ? 'pt-20' : 'pt-12') : ''}`}>
+                        <div className="mb-2 flex items-center justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => zoomSeatMap(-0.2)}
+                            className="px-2 py-1 text-xs rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100"
+                          >
+                            −
+                          </button>
+                          <button
+                            type="button"
+                            onClick={resetSeatMapViewport}
+                            className="px-2 py-1 text-xs rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100"
+                          >
+                            Reset zoom
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => zoomSeatMap(0.2)}
+                            className="px-2 py-1 text-xs rounded border border-gray-300 bg-white text-gray-700 hover:bg-gray-100"
+                          >
+                            +
+                          </button>
+                        </div>
+
+                        <div
+                          className="overflow-hidden rounded-lg border border-gray-200 bg-gray-100 touch-none"
+                          onTouchStart={handleSeatMapTouchStart}
+                          onTouchMove={handleSeatMapTouchMove}
+                          onTouchEnd={handleSeatMapTouchEnd}
+                          onTouchCancel={handleSeatMapTouchEnd}
+                        >
+                          <div
+                            style={{
+                              transform: `translate(${seatMapPan.x}px, ${seatMapPan.y}px) scale(${seatMapZoom})`,
+                              transformOrigin: 'center center',
+                              transition: 'transform 80ms linear',
+                            }}
+                          >
+                            <SeatMap
+                              ref={seatMapRef}
+                              seats={seats}
+                              stops={stops}
+                              selectedSeats={selectedSeats}
+                              setSelectedSeats={setSelectedSeats}
+                              moveSourceSeat={moveSourceSeat}
+                              setMoveSourceSeat={setMoveSourceSeat}
+                              popupPassenger={popupPassenger}
+                              setPopupPassenger={setPopupPassenger}
+                              popupSeat={popupSeat}
+                              setPopupSeat={setPopupSeat}
+                              popupPosition={popupPosition}
+                              setPopupPosition={setPopupPosition}
+                              handleMovePassenger={handleMovePassenger}
+                              handleSeatClick={handleSeatClick}
+                              toggleSeat={toggleSeat}
+                              isSeatFullyOccupiedViaSegments={isSeatFullyOccupiedViaSegments}
+                              checkSegmentOverlap={checkSegmentOverlap}
+                              selectedRoute={selectedRoute}
+                              setToastMessage={setToastMessage}
+                              setToastType={setToastType}
+                              driverName={currentDriverName}
+                              intentHolds={intentHolds}
+                              vehicleId={
+                                tabs.find(tv => tv.trip_vehicle_id === activeTv)?.vehicle_id
+                              }
+                              isWideView={isWideView}
+                              wideSeatSize={wideSeatSize}
+                              showObservations={showSeatObservations}
+                              seatTextSize={effectiveSeatTextSize}
+                              seatTextColor={effectiveSeatTextColor}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className={`overflow-auto ${isWideView ? (showWideSeatControls ? 'pt-20' : 'pt-12') : ''}`}>
+                        <SeatMap
+                          ref={seatMapRef}
+                          seats={seats}
+                          stops={stops}
+                          selectedSeats={selectedSeats}
+                          setSelectedSeats={setSelectedSeats}
+                          moveSourceSeat={moveSourceSeat}
+                          setMoveSourceSeat={setMoveSourceSeat}
+                          popupPassenger={popupPassenger}
+                          setPopupPassenger={setPopupPassenger}
+                          popupSeat={popupSeat}
+                          setPopupSeat={setPopupSeat}
+                          popupPosition={popupPosition}
+                          setPopupPosition={setPopupPosition}
+                          handleMovePassenger={handleMovePassenger}
+                          handleSeatClick={handleSeatClick}
+                          toggleSeat={toggleSeat}
+                          isSeatFullyOccupiedViaSegments={isSeatFullyOccupiedViaSegments}
+                          checkSegmentOverlap={checkSegmentOverlap}
+                          selectedRoute={selectedRoute}
+                          setToastMessage={setToastMessage}
+                          setToastType={setToastType}
+                          driverName={currentDriverName}
+                          intentHolds={intentHolds}
+                          vehicleId={
+                            tabs.find(tv => tv.trip_vehicle_id === activeTv)?.vehicle_id
+                          }
+                          isWideView={isWideView}
+                          wideSeatSize={wideSeatSize}
+                          showObservations={showSeatObservations}
+                          seatTextSize={effectiveSeatTextSize}
+                          seatTextColor={effectiveSeatTextColor}
+                        />
+                      </div>
+                    )}
 
                       {showSeatTextSettings && (
                         <div className="absolute top-2 right-2 z-30 w-64 bg-white border border-gray-200 rounded-lg shadow-lg p-3 text-xs">
@@ -5562,7 +5726,6 @@ export default function ReservationPage({ userRole, user }) {
 
 
                     </div>
-                  </div>
                 )}
 
 
