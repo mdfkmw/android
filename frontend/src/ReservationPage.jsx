@@ -79,6 +79,10 @@ export default function ReservationPage({ userRole, user }) {
   const [showWideSeatControls, setShowWideSeatControls] = useState(false);
   const [isExportingSeatMap, setIsExportingSeatMap] = useState(false);
   const [isTimelineModalOpen, setIsTimelineModalOpen] = useState(false);
+  const [isMobileViewport, setIsMobileViewport] = useState(
+    typeof window !== 'undefined' ? window.innerWidth < 1024 : false,
+  );
+  const [mobileWorkspaceTab, setMobileWorkspaceTab] = useState('map');
   const selectedSeatsRef = useRef([]);
   const previousSelectionKeyRef = useRef(null);
   const seatMapRef = useRef(null);
@@ -228,6 +232,27 @@ export default function ReservationPage({ userRole, user }) {
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [isTimelineModalOpen]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return undefined;
+
+    const handleResize = () => {
+      setIsMobileViewport(window.innerWidth < 1024);
+    };
+
+    handleResize();
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!selectedHour) {
+      setMobileWorkspaceTab('map');
+    }
+  }, [selectedHour]);
 
   const releaseHeldSeats = useCallback(() => {
     if (!tripId) return;
@@ -4967,7 +4992,7 @@ export default function ReservationPage({ userRole, user }) {
 
   return (
 
-    <div className="min-h-screen bg-gray-300 flex justify-center items-start py-10 px-6 w-full">
+    <div className="min-h-screen bg-gray-300 flex justify-center items-start py-4 sm:py-8 lg:py-10 px-2 sm:px-4 lg:px-6 w-full">
       <Toast message={toastMessage} type={toastType} />
 
 
@@ -4986,15 +5011,15 @@ export default function ReservationPage({ userRole, user }) {
       />
 
 
-      <div className="inline-block space-y-6">
-        <div className="flex flex-col md:inline-flex md:flex-row gap-6 items-start">
-          <div className="bg-white rounded shadow p-4 w-fit">
+      <div className="w-full max-w-[1700px] space-y-4 sm:space-y-6">
+        <div className="flex flex-col lg:flex-row gap-4 lg:gap-6 items-stretch lg:items-start">
+          <div className="bg-white rounded shadow p-4 w-full lg:w-fit">
             <label className="block font-semibold mb-2">Selectează data:</label>
             <CalendarWrapper selectedDate={selectedDate} setSelectedDate={setSelectedDate} />
 
           </div>
 
-          <div className="bg-white rounded shadow p-4 space-y-4 w-fit">
+          <div className="bg-white rounded shadow p-4 space-y-4 w-full lg:w-fit">
             <div className="flex justify-between items-center flex-wrap gap-4">
               {/* Butoane rapide */}
               <div className="flex gap-2">
@@ -5241,9 +5266,34 @@ export default function ReservationPage({ userRole, user }) {
               Se încarcă harta locurilor...
             </div>
           ) : seats.length > 0 && (
-            <div className="bg-white rounded shadow p-4 flex gap-6 items-start w-fit mx-auto relative">
+            <div className="bg-white rounded shadow p-3 sm:p-4 flex flex-col lg:flex-row gap-4 lg:gap-6 items-stretch lg:items-start w-full mx-auto relative">
+              {isMobileViewport && (
+                <div className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 p-1 lg:hidden">
+                  <button
+                    type="button"
+                    onClick={() => setMobileWorkspaceTab('map')}
+                    className={`flex-1 rounded-md px-3 py-2 text-sm font-semibold transition ${mobileWorkspaceTab === 'map'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-gray-700 hover:bg-white'
+                      }`}
+                  >
+                    Hartă locuri
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMobileWorkspaceTab('passengers')}
+                    className={`flex-1 rounded-md px-3 py-2 text-sm font-semibold transition ${mobileWorkspaceTab === 'passengers'
+                      ? 'bg-blue-600 text-white shadow-sm'
+                      : 'text-gray-700 hover:bg-white'
+                      }`}
+                  >
+                    Date pasageri
+                  </button>
+                </div>
+              )}
+
               {/* Harta locurilor */}
-              <div>
+              <div className={`${isMobileViewport && mobileWorkspaceTab !== 'map' ? 'hidden' : 'block'} w-full lg:w-auto`}>
                 <div className="flex flex-wrap items-center gap-3 mb-3">
 
                   <div className="inline-flex items-center gap-2 flex-wrap">
@@ -5520,7 +5570,7 @@ export default function ReservationPage({ userRole, user }) {
               </div>
 
               {/* Formulare pasageri */}
-              <div className="space-y-4 max-w-md w-[450px]">
+              <div className={`${isMobileViewport && mobileWorkspaceTab !== 'passengers' ? 'hidden' : 'block'} space-y-4 w-full lg:max-w-md lg:min-w-[420px]`}>
                 <div className="flex justify-between items-center">
                   <div className="font-semibold">Completează datele pasagerilor:</div>
                   <div className="flex items-center gap-2">
